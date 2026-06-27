@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Captura de Inversores - SQLite Data</title>
+    <link rel="icon" href="/rayo.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      /* ── SQLite Browser Styles ── */
+      .sqlite-browser {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px;
+        overflow: hidden;
+        backdrop-filter: blur(12px);
+      }
+      .sqlite-browser-head {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.25rem 1.5rem;
+        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.06));
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .sqlite-browser-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(99,102,241,0.25);
+      }
+      .sqlite-browser-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #e2e8f0;
+        letter-spacing: 0.02em;
+      }
+      .sqlite-browser-sub {
+        font-size: 0.75rem;
+        color: #64748b;
+        margin-top: 1px;
+      }
+
+      /* ── Controls ── */
+      .sqlite-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem 1.5rem;
+        background: rgba(255,255,255,0.02);
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        flex-wrap: wrap;
+      }
+      .sqlite-control-group {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .sqlite-control-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .sqlite-select {
+        padding: 0.45rem 0.75rem;
+        padding-right: 2rem;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 0.82rem;
+        outline: none;
+        cursor: pointer;
+        min-width: 160px;
+        max-width: 280px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.6rem center;
+      }
+      .sqlite-select:focus {
+        border-color: rgba(99,102,241,0.5);
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+      }
+      .sqlite-select option {
+        background: #1e293b;
+        color: #e2e8f0;
+      }
+      .sqlite-refresh-btn {
+        padding: 0.45rem 1rem;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        border: none;
+        border-radius: 8px;
+        color: #fff;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s, transform 0.1s;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .sqlite-refresh-btn:hover { opacity: 0.9; }
+      .sqlite-refresh-btn:active { transform: scale(0.97); }
+
+      /* ── Separator ── */
+      .sqlite-controls-sep {
+        width: 1px;
+        height: 24px;
+        background: rgba(255,255,255,0.08);
+        margin: 0 0.25rem;
+      }
+
+      /* ── Table ── */
+      .sqlite-table-wrap {
+        overflow-x: auto;
+        padding: 0;
+      }
+      .sqlite-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 0.8rem;
+      }
+      .sqlite-table thead th {
+        position: sticky;
+        top: 0;
+        background: rgba(30, 41, 59, 0.95);
+        backdrop-filter: blur(8px);
+        padding: 0.7rem 0.85rem;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.72rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 2px solid rgba(99,102,241,0.2);
+        white-space: nowrap;
+      }
+      .sqlite-table tbody tr {
+        transition: background 0.12s;
+      }
+      .sqlite-table tbody tr:hover {
+        background: rgba(99,102,241,0.06);
+      }
+      .sqlite-table tbody tr:nth-child(even) {
+        background: rgba(255,255,255,0.015);
+      }
+      .sqlite-table tbody tr:nth-child(even):hover {
+        background: rgba(99,102,241,0.06);
+      }
+      .sqlite-table tbody td {
+        padding: 0.6rem 0.85rem;
+        color: #cbd5e1;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+        white-space: nowrap;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sqlite-table tbody td:first-child {
+        color: #6366f1;
+        font-weight: 600;
+        font-size: 0.78rem;
+      }
+
+      /* ── Pager ── */
+      .sqlite-pager {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.85rem 1.5rem;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        background: rgba(255,255,255,0.02);
+      }
+      .sqlite-pager-info {
+        font-size: 0.78rem;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .sqlite-pager-info .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #6366f1;
+      }
+      .sqlite-pager-btns {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .sqlite-pager-btn {
+        padding: 0.4rem 1rem;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        color: #94a3b8;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .sqlite-pager-btn:hover {
+        background: rgba(99,102,241,0.1);
+        border-color: rgba(99,102,241,0.3);
+        color: #e2e8f0;
+      }
+      .sqlite-pager-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      /* ── Empty state ── */
+      .sqlite-empty {
+        padding: 3rem 1.5rem;
+        text-align: center;
+        color: #475569;
+        font-size: 0.85rem;
+      }
+      .sqlite-empty-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+        opacity: 0.4;
+      }
+
+      /* ── Table count badge ── */
+      .sqlite-table-count {
+        margin-left: auto;
+        padding: 0.3rem 0.75rem;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 20px;
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 600;
+      }
+      .sqlite-table-count span {
+        color: #e2e8f0;
+      }
+
+      /* ── Search in table list ── */
+      .sqlite-search-tables {
+        padding: 0.4rem 0.65rem;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 0.78rem;
+        outline: none;
+        width: 140px;
+        transition: border-color 0.2s;
+      }
+      .sqlite-search-tables:focus {
+        border-color: rgba(99,102,241,0.5);
+      }
+      .sqlite-search-tables::placeholder {
+        color: #475569;
+      }
+
+      /* ── Delete button ── */
+      .sqlite-delete-btn {
+        padding: 0.45rem 1rem;
+        background: rgba(239,68,68,0.12);
+        border: 1px solid rgba(239,68,68,0.25);
+        border-radius: 8px;
+        color: #f87171;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .sqlite-delete-btn:hover {
+        background: rgba(239,68,68,0.2);
+        border-color: rgba(239,68,68,0.4);
+      }
+
+      /* ── Modal Overlay ── */
+      .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.65);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s, visibility 0.2s;
+      }
+      .modal-overlay.active {
+        opacity: 1;
+        visibility: visible;
+      }
+      .modal-box {
+        background: #1e293b;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 16px;
+        width: 520px;
+        max-width: 92vw;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        transform: scale(0.95);
+        transition: transform 0.2s;
+      }
+      .modal-overlay.active .modal-box {
+        transform: scale(1);
+      }
+      .modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .modal-header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+      }
+      .modal-header-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: rgba(239,68,68,0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+      }
+      .modal-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #e2e8f0;
+      }
+      .modal-close {
+        background: none;
+        border: none;
+        color: #64748b;
+        font-size: 1.3rem;
+        cursor: pointer;
+        padding: 0.25rem;
+        line-height: 1;
+        transition: color 0.15s;
+      }
+      .modal-close:hover { color: #e2e8f0; }
+      .modal-body {
+        padding: 1rem 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .modal-search {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 0.82rem;
+        outline: none;
+        margin-bottom: 0.75rem;
+        transition: border-color 0.2s;
+      }
+      .modal-search:focus {
+        border-color: rgba(99,102,241,0.5);
+      }
+      .modal-search::placeholder { color: #475569; }
+      .modal-select-all {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.4rem 0;
+        margin-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        font-size: 0.78rem;
+        color: #94a3b8;
+        cursor: pointer;
+      }
+      .modal-table-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 320px;
+        overflow-y: auto;
+      }
+      .modal-table-item {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.45rem 0.5rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        color: #cbd5e1;
+        cursor: pointer;
+        transition: background 0.12s;
+      }
+      .modal-table-item:hover {
+        background: rgba(255,255,255,0.04);
+      }
+      .modal-table-item input[type=checkbox] {
+        accent-color: #ef4444;
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
+      }
+      .modal-table-item.protected {
+        opacity: 0.35;
+        pointer-events: none;
+      }
+      .modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid rgba(255,255,255,0.06);
+      }
+      .modal-footer-info {
+        font-size: 0.78rem;
+        color: #64748b;
+      }
+      .modal-footer-info span {
+        color: #f87171;
+        font-weight: 600;
+      }
+      .modal-footer-btns {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .modal-btn-cancel {
+        padding: 0.45rem 1rem;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: #94a3b8;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .modal-btn-cancel:hover {
+        background: rgba(255,255,255,0.1);
+        color: #e2e8f0;
+      }
+      .modal-btn-delete {
+        padding: 0.45rem 1rem;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        border: none;
+        border-radius: 8px;
+        color: #fff;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.15s, transform 0.1s;
+      }
+      .modal-btn-delete:hover { opacity: 0.9; }
+      .modal-btn-delete:active { transform: scale(0.97); }
+      .modal-btn-delete:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .modal-confirm-text {
+        font-size: 0.85rem;
+        color: #fbbf24;
+        padding: 0.75rem;
+        background: rgba(251,191,36,0.08);
+        border: 1px solid rgba(251,191,36,0.2);
+        border-radius: 8px;
+        margin-top: 0.75rem;
+        text-align: center;
+      }
+      .modal-result {
+        font-size: 0.82rem;
+        padding: 0.6rem 0.75rem;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+      }
+      .modal-result.success {
+        color: #4ade80;
+        background: rgba(74,222,128,0.08);
+        border: 1px solid rgba(74,222,128,0.2);
+      }
+      .modal-result.error {
+        color: #f87171;
+        background: rgba(248,113,113,0.08);
+        border: 1px solid rgba(248,113,113,0.2);
+      }
+    </style>
+  </head>
+  <body data-page="sqlite">
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">⚡</div>
+          <div class="brand-name">Captura de Inversores</div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item" href="/dashboard" data-nav="dashboard">Dashboard</a>
+          <a class="nav-item" href="/reports" data-nav="reports">Reportes</a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="muted" style="font-size: 0.72rem; margin-bottom: 4px;" id="sidebar-net">IP: —</div>
+          <div class="muted" id="sidebar-foot">Local</div>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-title">SQLITE DATA</div>
+            <div class="page-sub" id="top-status">Loading…</div>
+          </div>
+        </header>
+
+        <main class="content">
+          <section class="sqlite-browser">
+            <!-- Header -->
+            <div class="sqlite-browser-head">
+              <div class="sqlite-browser-icon">🗄️</div>
+              <div>
+                <div class="sqlite-browser-title">Database Browser</div>
+                <div class="sqlite-browser-sub">Explora las bases de datos SQLite de cada proveedor</div>
+              </div>
+              <div class="sqlite-table-count" id="table-count-badge"><span>—</span> tablas</div>
+            </div>
+
+            <!-- Controls -->
+            <div class="sqlite-controls">
+              <div class="sqlite-control-group">
+                <span class="sqlite-control-label">Base de datos</span>
+                <select class="sqlite-select" id="db-select"></select>
+              </div>
+
+              <div class="sqlite-controls-sep"></div>
+
+              <div class="sqlite-control-group">
+                <span class="sqlite-control-label">Tabla</span>
+                <input type="text" class="sqlite-search-tables" id="table-search" placeholder="Filtrar…" />
+                <select class="sqlite-select" id="table-select" style="min-width: 220px;"></select>
+              </div>
+
+              <div class="sqlite-controls-sep"></div>
+
+              <div class="sqlite-control-group">
+                <span class="sqlite-control-label">Orden</span>
+                <select class="sqlite-select" id="order-select" style="min-width: 140px;"></select>
+              </div>
+
+              <button class="sqlite-refresh-btn" id="refresh-btn">
+                <span>↻</span> Refresh
+              </button>
+              <button class="sqlite-delete-btn" id="delete-tables-btn">
+                <span>🗑️</span> Eliminar tablas
+              </button>
+            </div>
+
+            <!-- Table -->
+            <div class="sqlite-table-wrap" style="max-height: 62vh; overflow-y: auto;">
+              <table class="sqlite-table" id="rows-table">
+                <tbody>
+                  <tr><td colspan="99" class="sqlite-empty">
+                    <div class="sqlite-empty-icon">📂</div>
+                    Selecciona una base de datos y tabla para visualizar los datos
+                  </td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pager -->
+            <div class="sqlite-pager">
+              <div class="sqlite-pager-btns">
+                <button class="sqlite-pager-btn" id="prev-btn">← Anterior</button>
+                <button class="sqlite-pager-btn" id="next-btn">Siguiente →</button>
+              </div>
+              <div class="sqlite-pager-info">
+                <div class="dot"></div>
+                <span id="pager-info">—</span>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <!-- ── Modal: Eliminar tablas ── -->
+    <div class="modal-overlay" id="delete-modal">
+      <div class="modal-box">
+        <div class="modal-header">
+          <div class="modal-header-left">
+            <div class="modal-header-icon">🗑️</div>
+            <div class="modal-title">Eliminar tablas</div>
+          </div>
+          <button class="modal-close" id="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="text" class="modal-search" id="modal-search" placeholder="Buscar tabla…" />
+          <label class="modal-select-all">
+            <input type="checkbox" id="modal-select-all-cb" /> Seleccionar / deseleccionar todo
+          </label>
+          <div class="modal-table-list" id="modal-table-list"></div>
+          <div id="modal-confirm-area"></div>
+          <div id="modal-result"></div>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-info" id="modal-selected-info"><span>0</span> seleccionadas</div>
+          <div class="modal-footer-btns">
+            <button class="modal-btn-cancel" id="modal-cancel-btn">Cancelar</button>
+            <button class="modal-btn-delete" id="modal-delete-btn" disabled>Eliminar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+    <script>
+      // Table search filter
+      (() => {
+        const searchInput = document.getElementById('table-search');
+        const tableSel = document.getElementById('table-select');
+        const countBadge = document.getElementById('table-count-badge');
+        let allOptions = [];
+
+        const observer = new MutationObserver(() => {
+          allOptions = Array.from(tableSel.options).map(o => ({
+            value: o.value,
+            text: o.textContent,
+          }));
+          if (countBadge) {
+            countBadge.innerHTML = `<span>${allOptions.length}</span> tablas`;
+          }
+          searchInput.value = '';
+        });
+        observer.observe(tableSel, { childList: true });
+
+        searchInput.addEventListener('input', () => {
+          const q = searchInput.value.trim().toLowerCase();
+          const selected = tableSel.value;
+          tableSel.innerHTML = '';
+          const filtered = q
+            ? allOptions.filter(o => o.text.toLowerCase().includes(q))
+            : allOptions;
+          filtered.forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.value;
+            opt.textContent = o.text;
+            tableSel.appendChild(opt);
+          });
+          const match = filtered.find(o => o.value === selected);
+          if (match) tableSel.value = match.value;
+        });
+      })();
+
+      // ── Delete Tables Modal Logic ── //
+      (() => {
+        const PROTECTED = new Set(['meta_plants','meta_devices','meta_monitors','meta_columns','plant_events','sqlite_sequence']);
+        const overlay = document.getElementById('delete-modal');
+        const openBtn = document.getElementById('delete-tables-btn');
+        const closeBtn = document.getElementById('modal-close-btn');
+        const cancelBtn = document.getElementById('modal-cancel-btn');
+        const deleteBtn = document.getElementById('modal-delete-btn');
+        const searchInput = document.getElementById('modal-search');
+        const selectAllCb = document.getElementById('modal-select-all-cb');
+        const tableList = document.getElementById('modal-table-list');
+        const selectedInfo = document.getElementById('modal-selected-info');
+        const confirmArea = document.getElementById('modal-confirm-area');
+        const resultArea = document.getElementById('modal-result');
+        const dbSel = document.getElementById('db-select');
+
+        let allTables = [];
+        let phase = 'select'; // 'select' | 'confirm'
+
+        function close() {
+          overlay.classList.remove('active');
+          phase = 'select';
+          confirmArea.innerHTML = '';
+          resultArea.innerHTML = '';
+        }
+
+        function getSelected() {
+          return Array.from(tableList.querySelectorAll('input[type=checkbox]:checked'))
+            .map(cb => cb.dataset.table)
+            .filter(t => t && !PROTECTED.has(t));
+        }
+
+        function updateFooter() {
+          const sel = getSelected();
+          selectedInfo.innerHTML = `<span>${sel.length}</span> seleccionada${sel.length !== 1 ? 's' : ''}`;
+          deleteBtn.disabled = sel.length === 0;
+        }
+
+        function renderList(filter = '') {
+          tableList.innerHTML = '';
+          const q = filter.toLowerCase();
+          const filtered = q ? allTables.filter(t => t.toLowerCase().includes(q)) : allTables;
+          filtered.forEach(t => {
+            const isProt = PROTECTED.has(t);
+            const item = document.createElement('label');
+            item.className = 'modal-table-item' + (isProt ? ' protected' : '');
+            item.innerHTML = `<input type="checkbox" data-table="${t}" ${isProt ? 'disabled' : ''} />${t}`;
+            item.querySelector('input').addEventListener('change', updateFooter);
+            tableList.appendChild(item);
+          });
+          updateFooter();
+        }
+
+        async function openModal() {
+          phase = 'select';
+          confirmArea.innerHTML = '';
+          resultArea.innerHTML = '';
+          searchInput.value = '';
+          selectAllCb.checked = false;
+
+          const dbName = dbSel.value;
+          if (!dbName) return;
+
+          try {
+            const r = await fetch(`/api/sqlite/tables?db=${encodeURIComponent(dbName)}`);
+            const d = await r.json();
+            allTables = d.tables || [];
+          } catch {
+            allTables = [];
+          }
+
+          renderList();
+          overlay.classList.add('active');
+        }
+
+        searchInput.addEventListener('input', () => renderList(searchInput.value));
+
+        selectAllCb.addEventListener('change', () => {
+          const cbs = tableList.querySelectorAll('input[type=checkbox]:not(:disabled)');
+          cbs.forEach(cb => cb.checked = selectAllCb.checked);
+          updateFooter();
+        });
+
+        deleteBtn.addEventListener('click', async () => {
+          const sel = getSelected();
+          if (sel.length === 0) return;
+
+          if (phase === 'select') {
+            phase = 'confirm';
+            confirmArea.innerHTML = `<div class="modal-confirm-text">⚠️ ¿Estás seguro de eliminar <strong>${sel.length}</strong> tabla(s)? Esta acción no se puede deshacer.<br><br>Haz clic en <strong>Eliminar</strong> otra vez para confirmar.</div>`;
+            deleteBtn.textContent = '⚠️ Confirmar eliminación';
+            return;
+          }
+
+          // phase === 'confirm' → execute
+          deleteBtn.disabled = true;
+          deleteBtn.textContent = 'Eliminando…';
+
+          try {
+            const resp = await fetch('/api/sqlite/drop-tables', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ db: dbSel.value, tables: sel }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+              resultArea.innerHTML = `<div class="modal-result success">✅ ${data.message}</div>`;
+              // Reload tables after deletion
+              setTimeout(() => {
+                close();
+                // Trigger a refresh of the tables dropdown
+                dbSel.dispatchEvent(new Event('change'));
+              }, 1500);
+            } else {
+              resultArea.innerHTML = `<div class="modal-result error">❌ ${data.error || 'Error desconocido'}</div>`;
+            }
+          } catch (e) {
+            resultArea.innerHTML = `<div class="modal-result error">❌ Error de conexión: ${e.message}</div>`;
+          } finally {
+            deleteBtn.textContent = 'Eliminar';
+            phase = 'select';
+            confirmArea.innerHTML = '';
+            updateFooter();
+          }
+        });
+
+        openBtn.addEventListener('click', openModal);
+        closeBtn.addEventListener('click', close);
+        cancelBtn.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      })();
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Captura de Inversores - Logs</title>
+    <link rel="icon" href="/rayo.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="logs">
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">⚡</div>
+          <div class="brand-name">Captura de Inversores</div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item" href="/dashboard" data-nav="dashboard">Dashboard</a>
+          <a class="nav-item" href="/reports" data-nav="reports">Reportes</a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="muted" style="font-size: 0.72rem; margin-bottom: 4px;" id="sidebar-net">IP: —</div>
+          <div class="muted" id="sidebar-foot">Local</div>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-title">REAL-TIME LOGS</div>
+            <div class="page-sub" id="top-status">Loading…</div>
+          </div>
+        </header>
+
+        <main class="content">
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title">Logs</div>
+              <div class="panel-actions">
+                <select class="select" id="log-provider"></select>
+                <button class="btn btn-ghost" id="log-clear">Clear</button>
+              </div>
+            </div>
+            <pre class="log log-max" id="log-view"></pre>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

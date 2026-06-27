@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Captura de Inversores - Providers</title>
+    <link rel="icon" href="/rayo.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .monitors-section {
+        margin-bottom: 2rem;
+      }
+      .monitors-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      .monitors-header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .monitors-provider-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #fff;
+        flex-shrink: 0;
+      }
+      .monitors-provider-icon.shinemonitor { background: linear-gradient(135deg, #f59e0b, #d97706); }
+      .monitors-provider-icon.growatt { background: linear-gradient(135deg, #10b981, #059669); }
+      .monitors-provider-icon.values { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+      .monitors-provider-name {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #e2e8f0;
+        letter-spacing: 0.02em;
+      }
+      .monitors-provider-sub {
+        font-size: 0.75rem;
+        color: #64748b;
+        margin-top: 2px;
+      }
+      .monitors-count {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 20px;
+        padding: 0.35rem 0.85rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #94a3b8;
+      }
+      .monitors-count span {
+        color: #e2e8f0;
+        font-size: 1rem;
+      }
+      .monitors-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 0.5rem;
+      }
+      .monitor-item {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.55rem 0.85rem;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 8px;
+        font-size: 0.82rem;
+        color: #cbd5e1;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .monitor-item:hover {
+        background: rgba(255,255,255,0.06);
+        border-color: rgba(255,255,255,0.12);
+      }
+      .monitor-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .monitor-dot.shinemonitor { background: #f59e0b; }
+      .monitor-dot.growatt { background: #10b981; }
+      .monitor-dot.values { background: #6366f1; }
+      .monitor-idx {
+        color: #475569;
+        font-size: 0.72rem;
+        font-weight: 600;
+        min-width: 22px;
+      }
+      .monitor-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .monitors-error {
+        color: #f87171;
+        font-size: 0.85rem;
+        padding: 1rem;
+        background: rgba(248,113,113,0.06);
+        border: 1px solid rgba(248,113,113,0.15);
+        border-radius: 8px;
+      }
+      .monitors-loading {
+        color: #64748b;
+        font-size: 0.85rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      .monitor-search-wrap {
+        margin-bottom: 0.75rem;
+      }
+      .monitor-search {
+        width: 100%;
+        max-width: 320px;
+        padding: 0.45rem 0.75rem;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 0.82rem;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .monitor-search:focus {
+        border-color: rgba(99,102,241,0.5);
+      }
+      .monitor-search::placeholder {
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body data-page="providers">
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">⚡</div>
+          <div class="brand-name">Captura de Inversores</div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item" href="/dashboard" data-nav="dashboard">Dashboard</a>
+          <a class="nav-item" href="/reports" data-nav="reports">Reportes</a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="muted" style="font-size: 0.72rem; margin-bottom: 4px;" id="sidebar-net">IP: —</div>
+          <div class="muted" id="sidebar-foot">Local</div>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-title">CAPTURA DE INVERSORES - PROVIDERS</div>
+            <div class="page-sub" id="top-status">Loading…</div>
+          </div>
+        </header>
+
+        <main class="content">
+          <section class="stack" id="monitors-container">
+            <div class="monitors-loading">Cargando lista de monitores…</div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      const $ = sel => document.querySelector(sel);
+      const API = '';
+
+      async function apiGet(url) {
+        const r = await fetch(API + url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }
+
+      function renderProviderSection(key, data) {
+        const iconLabels = {
+          shinemonitor: 'SM',
+          growatt: 'GW',
+          values: 'VL',
+        };
+        const section = document.createElement('div');
+        section.className = 'monitors-section card';
+
+        if (data.error && data.count === 0) {
+          section.innerHTML = `
+            <div class="monitors-header">
+              <div class="monitors-header-left">
+                <div class="monitors-provider-icon ${key}">${iconLabels[key] || '?'}</div>
+                <div>
+                  <div class="monitors-provider-name">${data.label || key}</div>
+                  <div class="monitors-provider-sub">${data.error}</div>
+                </div>
+              </div>
+              <div class="monitors-count"><span>0</span> items</div>
+            </div>
+            <div class="monitors-error">${data.error}</div>
+          `;
+          return section;
+        }
+
+        const capturedText = data.captured_at
+          ? `Actualizado: ${new Date(data.captured_at).toLocaleString('es-VE')}`
+          : '';
+
+        section.innerHTML = `
+          <div class="monitors-header">
+            <div class="monitors-header-left">
+              <div class="monitors-provider-icon ${key}">${iconLabels[key] || '?'}</div>
+              <div>
+                <div class="monitors-provider-name">${data.label || key}</div>
+                <div class="monitors-provider-sub">${capturedText}</div>
+              </div>
+            </div>
+            <div class="monitors-count"><span>${data.count}</span> ${key === 'shinemonitor' ? 'plantas' : 'monitores'}</div>
+          </div>
+          <div class="monitor-search-wrap">
+            <input type="text" class="monitor-search" placeholder="Buscar..." data-provider="${key}" />
+          </div>
+          <div class="monitors-grid" id="grid-${key}"></div>
+        `;
+
+        const grid = section.querySelector(`#grid-${key}`);
+        (data.items || []).forEach((item, i) => {
+          const el = document.createElement('div');
+          el.className = 'monitor-item';
+          el.dataset.name = (item.name || '').toLowerCase();
+          el.innerHTML = `
+            <div class="monitor-dot ${key}"></div>
+            <span class="monitor-idx">${i + 1}</span>
+            <span class="monitor-name" title="${item.name || ''}">${item.name || '(sin nombre)'}</span>
+          `;
+          grid.appendChild(el);
+        });
+
+        // Search
+        const searchInput = section.querySelector('.monitor-search');
+        searchInput.addEventListener('input', () => {
+          const q = searchInput.value.trim().toLowerCase();
+          grid.querySelectorAll('.monitor-item').forEach(el => {
+            el.style.display = (el.dataset.name || '').includes(q) ? '' : 'none';
+          });
+        });
+
+        return section;
+      }
+
+      async function loadMonitors() {
+        const container = $('#monitors-container');
+        try {
+          const data = await apiGet('/api/providers/monitors');
+          container.innerHTML = '';
+
+          const order = ['shinemonitor', 'growatt', 'values'];
+          let totalItems = 0;
+          order.forEach(key => {
+            if (data[key]) {
+              container.appendChild(renderProviderSection(key, data[key]));
+              totalItems += (data[key].count || 0);
+            }
+          });
+
+          $('#top-status').textContent = `Total: ${totalItems} plantas/monitores en ${order.length} gestores`;
+        } catch (e) {
+          container.innerHTML = `<div class="monitors-error">Error cargando monitores: ${e.message}</div>`;
+        }
+      }
+
+      // Nav active
+      document.querySelectorAll('.nav-item').forEach(a => {
+        if (a.dataset.nav === 'providers') a.classList.add('active');
+      });
+
+      loadMonitors();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Captura de Inversores - Reportes</title>
+    <link rel="icon" href="/rayo.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .slot-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 16px;
+        margin-top: 24px;
+      }
+      .slot-card {
+        background: rgba(30, 41, 59, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 24px 16px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: none;
+      }
+      .slot-card:hover { 
+        background: rgba(30, 41, 59, 0.8); 
+        transform: translateY(-3px);
+      }
+      .slot-card.active {
+        background: rgba(255, 107, 0, 0.12);
+        border-color: rgba(255, 107, 0, 0.5);
+        box-shadow: 0 4px 16px rgba(255, 107, 0, 0.15);
+      }
+      .slot-icon { font-size: 2.2rem; margin-bottom: 12px; display: block; }
+      .slot-name { font-weight: 600; color: #f1f5f9; letter-spacing: 0.5px; margin-bottom: 6px; }
+      .slot-time { font-size: 0.75rem; color: #94a3b8; }
+
+      .action-bar {
+        margin-top: 32px;
+        padding-top: 32px;
+        border-top: 1px dashed rgba(255, 255, 255, 0.1);
+        display: flex;       
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .btn-huge {
+        padding: 16px 48px;
+        font-size: 1.15rem;
+        font-weight: 600;
+        border-radius: 50px;
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .btn-huge:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4); }
+      .btn-huge:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4); }
+      .btn-huge:disabled { background: #334155; box-shadow: none; cursor: not-allowed; transform: none; color: #94a3b8; }
+      .btn-huge .spinner { display: none; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
+      .btn-huge.loading .spinner { display: inline-block; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .history-item-pro {
+        display: flex;
+        align-items: center;
+        padding: 20px 24px;
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        margin-bottom: 12px;
+        transition: all 0.2s;
+        gap: 16px;
+      }
+      .history-item-pro:hover { background: rgba(30, 41, 59, 0.6); border-color: rgba(255,255,255,0.1); }
+      .hi-icon { font-size: 2.2rem; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: rgba(16, 185, 129, 0.1); border-radius: 10px; }
+      .hi-details { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+      .hi-name { font-weight: 500; color: #f8fafc; font-size: 1rem; word-break: break-all; }
+      .hi-meta { font-size: 0.85rem; color: #94a3b8; display: flex; gap: 16px; }
+      .hi-meta span { display: flex; align-items: center; gap: 4px; }
+      .hi-actions { display: flex; gap: 10px; }
+      
+      .btn-pro { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #f1f5f9; border-radius: 8px; padding: 10px 16px; cursor: pointer; transition: 0.2s; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; font-weight: 500; }
+      .btn-pro:hover { background: rgba(255, 107, 0, 0.1); border-color: rgba(255, 107, 0, 0.3); color: #ff6b00; }
+      .btn-pro.danger:hover { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #f87171; }
+      
+      @media (max-width: 600px) {
+        .history-item-pro { flex-direction: column; align-items: flex-start; }
+        .hi-actions { width: 100%; }
+        .btn-pro { flex: 1; justify-content: center; }
+      }
+    </style>
+  </head>
+  <body data-page="reports">
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">⚡</div>
+          <div class="brand-name">Captura de Inversores</div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item" href="/dashboard" data-nav="dashboard">Dashboard</a>
+          <a class="nav-item" href="/reports" data-nav="reports">Reportes</a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="muted" style="font-size: 0.72rem; margin-bottom: 4px;" id="sidebar-net">IP: —</div>
+          <div class="muted" id="sidebar-foot">Local</div>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-title">CENTRO DE REPORTES</div>
+            <div class="page-sub" id="top-status">Extractor de métricas combinadas a Excel</div>
+          </div>
+        </header>
+
+        <main class="content">
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title">🪄 EXTRAER NUEVO REPORTE</div>
+            </div>
+            
+            <div class="muted" style="margin-top: 8px;">Selecciona el turno al que corresponden los datos. Todos los gestores activos serán empaquetados.</div>
+
+            <div class="slot-grid">
+              <div class="slot-card active" data-slot="manana">
+                <span class="slot-icon">🌅</span>
+                <div class="slot-name">Mañana</div>
+                <div class="slot-time">~ 06:00 a 11:59</div>
+              </div>
+              <div class="slot-card" data-slot="mediodia">
+                <span class="slot-icon">☀️</span>
+                <div class="slot-name">Medio día</div>
+                <div class="slot-time">~ 12:00 a 14:59</div>
+              </div>
+              <div class="slot-card" data-slot="tarde">
+                <span class="slot-icon">🌇</span>
+                <div class="slot-name">Tarde</div>
+                <div class="slot-time">~ 15:00 a 18:59</div>
+              </div>
+              <div class="slot-card" data-slot="medianoche">
+                <span class="slot-icon">🌙</span>
+                <div class="slot-name">Medianoche</div>
+                <div class="slot-time">Cierre de Día</div>
+              </div>
+            </div>
+
+            <!-- Botón Oculto original para compatibilidad con CSS, lo mantendremos desactivado y usaremos el nuevo ID -->
+            <select id="report-slot" style="display:none;">
+              <option value="manana" selected>Mañana</option>
+              <option value="mediodia">Medio día</option>
+              <option value="tarde">Tarde</option>
+              <option value="medianoche">Medianoche</option>
+            </select>
+
+            <div class="action-bar">
+              <div id="report-status-text" class="muted" style="font-size: 0.95rem; height: 20px; font-weight: 500;">Esperando extracción...</div>
+              <button class="btn-huge" id="report-export-pro">
+                <div class="spinner"></div>
+                <span class="btn-text">Descargar Reporte Excel</span>
+              </button>
+            </div>
+
+          </section>
+
+          <section class="panel" style="margin-top: 24px;">
+            <div class="panel-head" style="align-items: center; justify-content: space-between; display: flex; flex-wrap: wrap; gap: 12px;">
+              <div class="panel-title">📚 HISTORIAL DE EXPORTACIONES</div>
+              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <button class="btn-pro danger" id="btn-delete-all-reports" style="padding: 8px 16px; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                  🗑️ Eliminar Todos
+                </button>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label for="history-date-select" class="muted" style="font-size: 0.85rem; font-weight: 500;">📅 Filtro:</label>
+                  <select id="history-date-select" class="select" style="min-width: 140px; border-radius: 8px; background: rgba(15,23,42,0.6); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.1); padding: 8px 12px;"></select>
+                </div>
+              </div>
+            </div>
+
+            <div id="report-history" class="history-list" style="margin-top: 20px;">
+              <div class="muted" style="padding: 24px; text-align: center;">Cargando historial...</div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

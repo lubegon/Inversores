@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Captura de Inversores - Tunnel &amp; Security</title>
+    <link rel="icon" href="/rayo.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="tunnel">
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">⚡</div>
+          <div class="brand-name">Captura de Inversores</div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item" href="/dashboard" data-nav="dashboard">Dashboard</a>
+          <a class="nav-item" href="/reports" data-nav="reports">Reportes</a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="muted" style="font-size: 0.72rem; margin-bottom: 4px;" id="sidebar-net">IP: —</div>
+          <div class="muted" id="sidebar-foot">Local</div>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-title">TUNNEL &amp; SECURITY</div>
+            <div class="page-sub" id="top-status">Loading…</div>
+          </div>
+        </header>
+
+        <main class="content">
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title">Estado</div>
+            </div>
+            <div class="kv-row">
+              <div class="kv"><span class="muted">URL:</span> <span id="tunnel-url">—</span></div>
+              <div class="kv"><span class="muted">Cloudflare Tunnel:</span> <span id="tunnel-state">—</span></div>
+              <div class="kv"><span class="muted">Auth:</span> <span id="auth-state">—</span></div>
+            </div>
+          </section>
+
+          <section class="panel" style="margin-top:14px">
+            <div class="panel-head">
+              <div class="panel-title">Comandos</div>
+            </div>
+            <pre class="code"># En una ventana (proyecto)
+$env:WEBUI_BASIC_AUTH="usuario:password"
+python .\webui_server.py
+
+# En otra ventana (carpeta Cloudflared)
+.\cloudflared.exe tunnel --url http://127.0.0.1:8000</pre>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
