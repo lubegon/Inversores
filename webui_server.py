@@ -27,6 +27,12 @@ BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "webui"
 STORAGE_DIR = BASE_DIR / "storage"
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=BASE_DIR / ".env")
+except ImportError:
+    pass
+
 REPORTS_DIR = STORAGE_DIR / "reports"
 REPORT_TEMPLATE = BASE_DIR / "Monitores_Electricos_20260308_1924.xlsx"
 REPORT_FILENAME = "Reporte Voltguard.xlsx"
@@ -3777,6 +3783,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/config":
             keys = [
+                "SHINE_USER",
+                "SHINE_PASS",
+                "GROWATT_USER",
+                "GROWATT_PASS",
+                "VALUES_USER",
+                "VALUES_PASS",
                 "HEADLESS",
                 "BROWSER",
                 "SHINE_DEFAULT_TIMEOUT_MS",
@@ -4143,6 +4155,10 @@ class Handler(BaseHTTPRequestHandler):
                 
                 with open(env_path, "w", encoding="utf-8") as f:
                     f.writelines(new_lines)
+                
+                # Sincronizar os.environ para reflejar los cambios en la UI de inmediato
+                for k, v in body.items():
+                    os.environ[k] = str(v)
                 
                 _json_response(self, 200, {"ok": True})
             except Exception as e:
