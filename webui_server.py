@@ -177,6 +177,59 @@ def _canonical_slot(slot: str) -> str:
     return ""
 
 
+def _is_today(val: Any) -> bool:
+    if not val:
+        return False
+
+    local_today = datetime.now().strftime("%Y-%m-%d")
+    utc_today = datetime.utcnow().strftime("%Y-%m-%d")
+    allowed_dates = {local_today, utc_today}
+    try:
+        from zoneinfo import ZoneInfo
+        allowed_dates.add(datetime.now(ZoneInfo("America/Caracas")).strftime("%Y-%m-%d"))
+    except Exception:
+        pass
+
+    if hasattr(val, "strftime"):
+        try:
+            return val.strftime("%Y-%m-%d") in allowed_dates
+        except Exception:
+            pass
+
+    s = str(val).strip()
+    if not s or s in ("NO_DATA", "NO_TABLE", "NO_TAB", "NO_INVERTER"):
+        return False
+
+    match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
+    if match:
+        date_str = match.group(1)
+        return date_str in allowed_dates
+
+    for d in allowed_dates:
+        if d in s:
+            return True
+
+    return False
+
+
+def _is_db_row_from_today(row_dict: dict[str, Any]) -> bool:
+    if not row_dict:
+        return False
+
+    for k in ("captured_at", "inserted_at"):
+        val = row_dict.get(k)
+        if val and _is_today(val):
+            return True
+
+    for k in ("update_time", "Timestamp", "timestamp"):
+        val = row_dict.get(k)
+        if val and _is_today(val):
+            return True
+
+    return False
+
+
+
 def _safe_report_path(file_name: str) -> Path | None:
     """Resuelve un archivo dentro de storage/reports de forma segura.
 
@@ -917,13 +970,15 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: 
                 pass
             k = (_norm_key(plant), _norm_key(device), slot_i)
             prev = {} if is_after else (existing.get(k) or {})
+            if prev and not _is_today(prev.get("timestamp")):
+                prev = {}
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
                 if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
                     continue
                 if hn in prev:
                     ws.cell(r, c).value = prev.get(hn)
-                elif is_after:
+                else:
                     ws.cell(r, c).value = None
 
         # Merge plant/device over 4 rows
@@ -938,13 +993,25 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: 
 
         # Actualizar solo el slot pedido con la fila más reciente de la BD
         best = _latest_any_row(tables)
-        if best is not None:
-            status = str(best.get("status") or "").strip()
-            # buscar fila del slot en este bloque
-            for i, hl in enumerate(hour_labels):
-                if _canonical_slot(hl) != slot:
-                    continue
-                r = row + i
+        if best is not None and not _is_db_row_from_today(best):
+            best = None
+
+        # buscar fila del slot en este bloque
+        for i, hl in enumerate(hour_labels):
+            if _canonical_slot(hl) != slot:
+                continue
+            r = row + i
+            if best is None:
+                for c, h in enumerate(headers, start=1):
+                    hn = _norm_key(h)
+                    if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
+                        continue
+                    if hn == _norm_key("timestamp"):
+                        ws.cell(r, c).value = "NO_DATA"
+                    else:
+                        ws.cell(r, c).value = None
+            else:
+                status = str(best.get("status") or "").strip()
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
                     if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
@@ -958,7 +1025,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: 
                         if val in (None, "", " ") and status:
                             val = status
                     ws.cell(r, c).value = val
-                break
+            break
 
         row += 4
 
@@ -1166,13 +1233,15 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
             except ValueError:
                 pass
             prev = {} if is_after else (existing.get((_norm_key(mon_name), slot_i)) or {})
+            if prev and not _is_today(prev.get("timestamp")):
+                prev = {}
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
                 if hn in (_norm_key("monitor_name"), _norm_key("hora")):
                     continue
                 if hn in prev:
                     ws.cell(r, c).value = prev.get(hn)
-                elif is_after:
+                else:
                     ws.cell(r, c).value = None
 
         try:
@@ -1182,6 +1251,9 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
 
         # Actualizar solo el slot pedido
         best = _latest_row(t)
+        if best is not None and not _is_db_row_from_today(best):
+            best = None
+
         # buscar fila del slot
         target_r = None
         for i, hl in enumerate(hour_labels):
@@ -1190,11 +1262,15 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
                 break
         if target_r is not None:
             if best is None:
-                # sin filas -> NO_DATA
+                # sin filas -> NO_DATA en Timestamp y None en el resto
                 for c, h in enumerate(headers, start=1):
-                    if _norm_key(h) == _norm_key("Timestamp"):
+                    hn = _norm_key(h)
+                    if hn in (_norm_key("monitor_name"), _norm_key("hora")):
+                        continue
+                    if hn == _norm_key("timestamp"):
                         ws.cell(target_r, c).value = "NO_DATA"
-                        break
+                    else:
+                        ws.cell(target_r, c).value = None
             else:
                 colmap = table_map.get(t) or {}
                 ts_written = False
@@ -1206,14 +1282,11 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
                     if not db_col:
                         continue
                     val = best.get(db_col) if isinstance(best, dict) else None
-                    if hn == _norm_key("Timestamp"):
+                    if hn == _norm_key("timestamp"):
                         ts_written = True
                         if val in (None, "", " "):
                             val = "NO_DATA"
                     ws.cell(target_r, c).value = val
-                if not ts_written:
-                    # si no existe columna Timestamp por cualquier razón, no hacemos nada extra
-                    pass
 
         row += 4
 
@@ -1426,13 +1499,15 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection, slot: 
             except ValueError:
                 pass
             prev = {} if is_after else (existing.get((_norm_key(plant_name), slot_i)) or {})
+            if prev and not _is_today(prev.get("timestamp")):
+                prev = {}
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
                 if hn in (_norm_key("plant_name"), _norm_key("hora")):
                     continue
                 if hn in prev:
                     ws.cell(r, c).value = prev.get(hn)
-                elif is_after:
+                else:
                     ws.cell(r, c).value = None
 
         try:
@@ -1447,12 +1522,19 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection, slot: 
                 target_r = row + i
                 break
         best = _latest_row(t)
+        if best is not None and not _is_db_row_from_today(best):
+            best = None
+            
         if target_r is not None:
             if best is None:
                 for c, h in enumerate(headers, start=1):
-                    if _norm_key(h) == _norm_key("Timestamp"):
+                    hn = _norm_key(h)
+                    if hn in (_norm_key("plant_name"), _norm_key("hora")):
+                        continue
+                    if hn == _norm_key("timestamp"):
                         ws.cell(target_r, c).value = "NO_DATA"
-                        break
+                    else:
+                        ws.cell(target_r, c).value = None
             else:
                 colmap = table_map.get(t) or {}
                 ts_written = False
@@ -1469,8 +1551,6 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection, slot: 
                         if val in (None, "", " "):
                             val = "NO_DATA"
                     ws.cell(target_r, c).value = val
-                if not ts_written:
-                    pass
 
         row += 4
 
@@ -1640,7 +1720,26 @@ def _generate_or_update_report(*, slot: str) -> Path:
     _ensure_reports_dir()
 
     # Cargar/crear workbook persistido
+    # Si el reporte en disco es de un día anterior, lo borramos/reiniciamos para no arrastrar basura.
+    is_report_from_today = False
     if REPORT_PATH.exists():
+        try:
+            st = REPORT_PATH.stat()
+            mtime_date = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d")
+            local_today = datetime.now().strftime("%Y-%m-%d")
+            utc_today = datetime.utcnow().strftime("%Y-%m-%d")
+            allowed = {local_today, utc_today}
+            try:
+                from zoneinfo import ZoneInfo
+                allowed.add(datetime.now(ZoneInfo("America/Caracas")).strftime("%Y-%m-%d"))
+            except Exception:
+                pass
+            if mtime_date in allowed:
+                is_report_from_today = True
+        except Exception:
+            pass
+
+    if REPORT_PATH.exists() and is_report_from_today:
         wb = openpyxl.load_workbook(REPORT_PATH)
     else:
         wb = openpyxl.load_workbook(REPORT_TEMPLATE)
@@ -3892,8 +3991,22 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/report/download":
+            # Obtener parámetros de consulta
             qs = parse_qs(parsed.query)
-            name = (qs.get("file") or [""])[0]
+            # Parámetro opcional 'slot' para generar el reporte del día actual
+            slot = (qs.get("slot") or [""])[0]
+            # Si no se especifica slot, usamos 'medianoche' como default
+            if not slot:
+                slot = "medianoche"
+            # Generar o actualizar el reporte antes de servirlo
+            try:
+                _generate_or_update_report(slot=slot)
+            except Exception as e:
+                # Si ocurre un error al generar, devolvemos respuesta de error
+                _json_response(self, 500, {"error": f"Error al generar el reporte: {e}"})
+                return
+            # Nombre del archivo solicitado (por defecto el reporte actual)
+            name = (qs.get("file") or [REPORT_FILENAME])[0]
             p = _safe_report_path(name)
             if not p or not p.exists() or not p.is_file():
                 _json_response(self, 404, {"error": "archivo no encontrado"})
