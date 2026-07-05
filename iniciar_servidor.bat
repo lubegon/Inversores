@@ -14,26 +14,33 @@ if %errorlevel% neq 0 (
     echo [INFO] Iniciando descarga e instalacion automatica de Python 3.12...
     echo.
     
-    echo [PASO 1/3] Descargando instalador de Python 3.12.2 desde python.org...
-    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; echo 'Descargando...'; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe' -OutFile 'python_installer.exe'"
-    if errorlevel 1 (
-        echo [ERROR] No se pudo descargar el instalador de Python. Asegurate de tener conexion a internet.
-        pause
-        exit /b 1
+    echo [PASO 1/3] Buscando instalador de Python local...
+    if exist "python-3.12.3-amd64.exe" (
+        echo [OK] Instalador local python-3.12.3-amd64.exe encontrado.
+        set "PYTHON_INSTALLER=python-3.12.3-amd64.exe"
+    ) else (
+        echo [INFO] No se encontro instalador local. Descargando de python.org...
+        powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; echo 'Descargando...'; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe' -OutFile 'python_installer.exe'"
+        if errorlevel 1 (
+            echo [ERROR] No se pudo descargar el instalador de Python. Asegurate de tener conexion a internet.
+            pause
+            exit /b 1
+        )
+        set "PYTHON_INSTALLER=python_installer.exe"
+        echo [OK] Descarga completada.
     )
-    echo [OK] Descarga completada.
     echo.
     
-    echo [PASO 2/3] Instalando Python 3.12 de forma silenciosa...
+    echo [PASO 2/3] Instalando Python de forma silenciosa...
     echo [INFO] Esto tardara aproximadamente 1 minuto. Espere por favor...
-    python_installer.exe /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 Include_pip=1 Include_doc=0
+    "%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 Include_pip=1 Include_doc=0
     if errorlevel 1 (
         echo [ERROR] Fallo la instalacion de Python.
-        del python_installer.exe >nul 2>&1
+        if "%PYTHON_INSTALLER%"=="python_installer.exe" del python_installer.exe >nul 2>&1
         pause
         exit /b 1
     )
-    del python_installer.exe >nul 2>&1
+    if "%PYTHON_INSTALLER%"=="python_installer.exe" del python_installer.exe >nul 2>&1
     echo [OK] Instalacion completada con exito.
     echo.
     
@@ -82,9 +89,9 @@ echo.
 :venv_ready
 
 rem 3. Instalar dependencias dentro del entorno virtual
-echo [INFO] Instalando/actualizando dependencias en el entorno virtual .venv...
-.venv\Scripts\python.exe -m pip install --upgrade pip
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+echo [INFO] Instalando/actualizando dependencias de forma silenciosa en el entorno virtual .venv...
+.venv\Scripts\python.exe -m pip install --upgrade pip -q
+.venv\Scripts\python.exe -m pip install -r requirements.txt -q
 if errorlevel 1 (
     echo [WARNING] Hubo un problema al instalar las dependencias de requirements.txt.
     echo Se intentara continuar...
@@ -95,8 +102,8 @@ if errorlevel 1 (
 )
 
 rem 4. Instalar navegadores de Playwright
-echo [INFO] Asegurando que los navegadores de automatizacion (Playwright) esten instalados...
-.venv\Scripts\playwright.exe install chromium msedge
+echo [INFO] Instalando navegadores de automatizacion (Playwright) de forma silenciosa...
+.venv\Scripts\playwright.exe install chromium msedge >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] No se pudieron instalar los navegadores de Playwright.
     echo Asegurate de tener conexion a Internet.
