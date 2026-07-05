@@ -104,6 +104,7 @@ if errorlevel 1 (
 rem 4. Instalar navegadores de Playwright
 echo [INFO] Instalando navegadores de automatizacion (Playwright) de forma silenciosa...
 .venv\Scripts\playwright.exe install chromium msedge >nul 2>&1
+call npx playwright install >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] No se pudieron instalar los navegadores de Playwright.
     echo Asegurate de tener conexion a Internet.
