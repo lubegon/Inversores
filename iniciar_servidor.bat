@@ -120,7 +120,7 @@ echo [INFO] Configurando Playwright para usar navegadores locales...
 set "PLAYWRIGHT_BROWSERS_PATH=%~dp0playwright_browsers"
 
 echo [INFO] Instalando navegadores de automatizacion (Playwright). Mostrando progreso...
-.venv\Scripts\playwright.exe install chromium msedge
+.venv\Scripts\playwright.exe install --force chromium msedge
 if errorlevel 1 (
     echo [WARNING] No se pudieron instalar los navegadores de Playwright.
     echo Asegurate de tener conexion a Internet.
