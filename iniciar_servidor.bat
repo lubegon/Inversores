@@ -153,8 +153,13 @@ if not exist .env (
 )
 
 rem 6. Iniciar Servidor
+cls
 echo ======================================================================
-echo    Iniciando Servidor de Captura de Inversores...
+echo           SISTEMA DE CAPTURA DE INVERSORES
+echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
+echo ======================================================================
+echo.
+echo    Iniciando Servidor de Interfaz Web...
 echo ======================================================================
 echo.
 .venv\Scripts\python.exe -u webui_server.py
