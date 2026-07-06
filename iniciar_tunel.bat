@@ -38,6 +38,6 @@ echo IMPORTANTE: El servidor principal (iniciar_servidor.bat) debe estar corrien
 echo ======================================================================
 echo.
 
-"%CLOUDFLARED_EXE%" tunnel --url http://127.0.0.1:8000
+.venv\Scripts\python.exe tunnel_runner.py
 
 pause
