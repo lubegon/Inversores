@@ -4429,6 +4429,10 @@ def main() -> None:
     host = os.environ.get("WEBUI_HOST", "0.0.0.0")
     port = int(os.environ.get("WEBUI_PORT", "8000"))
 
+    # Limpiar estado anterior al arrancar (logs y progreso a 0)
+    for p in PROVIDERS:
+        _clear_log(p)
+
     if not WEB_DIR.exists():
         raise SystemExit("No existe carpeta webui/")
 
