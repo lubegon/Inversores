@@ -2799,6 +2799,13 @@ def _clear_log(provider: str) -> dict[str, Any]:
     with _jobs_lock:
         _log_base_pos[provider] = int(size)
 
+    grid_path = _last_status_grid_file(provider)
+    if grid_path.exists():
+        try:
+            grid_path.unlink()
+        except Exception:
+            pass
+
     return {"ok": True, "provider": provider, "base_pos": int(size)}
 
 

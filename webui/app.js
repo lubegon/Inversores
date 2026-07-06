@@ -217,6 +217,7 @@ function createProviderCard(provider, templateId) {
     }
     pos = 0;
     logEl.textContent = '';
+    renderStatusGrid(provider.key, null);
   });
 
   const updateMetrics = (metrics) => {
