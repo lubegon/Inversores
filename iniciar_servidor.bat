@@ -4,6 +4,7 @@ chcp 65001 > nul
 title Iniciar Servidor - Captura de Inversores
 echo ======================================================================
 echo           INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES
+echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.
 
