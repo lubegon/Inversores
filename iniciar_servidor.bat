@@ -9,59 +9,67 @@ echo.
 
 rem 1. Verificar si Python esta instalado
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [INFO] Python no esta instalado o no se encuentra en el PATH.
-    echo [INFO] Iniciando descarga e instalacion automatica de Python 3.12...
-    echo.
-    
-    echo [PASO 1/3] Buscando instalador de Python local...
-    if exist "python-3.12.3-amd64.exe" (
-        echo [OK] Instalador local python-3.12.3-amd64.exe encontrado.
-        set "PYTHON_INSTALLER=python-3.12.3-amd64.exe"
-    ) else (
-        echo [INFO] No se encontro instalador local. Descargando de python.org...
-        powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; echo 'Descargando...'; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe' -OutFile 'python_installer.exe'"
-        if errorlevel 1 (
-            echo [ERROR] No se pudo descargar el instalador de Python. Asegurate de tener conexion a internet.
-            pause
-            exit /b 1
-        )
-        set "PYTHON_INSTALLER=python_installer.exe"
-        echo [OK] Descarga completada.
-    )
-    echo.
-    
-    echo [PASO 2/3] Instalando Python de forma silenciosa sin permisos de administrador...
-    echo [INFO] Esto tardara aproximadamente 1 minuto. Espere por favor...
-    
-    rem Forzar a que el instalador no pida permisos de administrador (bypasea UAC)
-    set "__COMPAT_LAYER=RunAsInvoker"
-    "%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=0 Include_test=0 Include_pip=1 Include_doc=0
-    set "__COMPAT_LAYER="
-    
-    if errorlevel 1 (
-        echo [ERROR] Fallo la instalacion de Python.
-        if "%PYTHON_INSTALLER%"=="python_installer.exe" del python_installer.exe >nul 2>&1
-        pause
-        exit /b 1
-    )
-    if "%PYTHON_INSTALLER%"=="python_installer.exe" del python_installer.exe >nul 2>&1
-    echo [OK] Instalacion completada con exito.
-    echo.
-    
-    echo [PASO 3/3] Configurando variables de entorno temporales...
+if %errorlevel% equ 0 goto python_installed
+
+rem Intentar encontrar python si esta instalado pero no en el PATH
+if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
     set "PATH=%LOCALAPPDATA%\Programs\Python\Python312\;%LOCALAPPDATA%\Programs\Python\Python312\Scripts\;%PATH%"
-    
-    python --version >nul 2>&1
+    goto python_installed
+)
+
+echo [INFO] Python no esta instalado o no se encuentra en el PATH.
+echo [INFO] Iniciando descarga e instalacion automatica de Python 3.12...
+echo.
+
+echo [PASO 1/3] Buscando instalador de Python local...
+if exist "python-3.12.3-amd64.exe" (
+    echo [OK] Instalador local python-3.12.3-amd64.exe encontrado.
+    set "PYTHON_INSTALLER=python-3.12.3-amd64.exe"
+) else (
+    echo [INFO] No se encontro instalador local. Descargando de python.org...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; echo 'Descargando...'; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe' -OutFile 'python_installer.exe'"
     if errorlevel 1 (
-        echo [ERROR] No se pudo verificar la instalacion de Python en el PATH temporal.
-        echo Por favor, cierre esta ventana e intente abrir iniciar_servidor.bat de nuevo.
+        echo [ERROR] No se pudo descargar el instalador de Python. Asegurate de tener conexion a internet.
         pause
         exit /b 1
     )
-    echo [OK] Entorno de Python configurado correctamente.
-    echo.
+    set "PYTHON_INSTALLER=python_installer.exe"
+    echo [OK] Descarga completada.
 )
+echo.
+
+echo [PASO 2/3] Instalando Python de forma silenciosa sin permisos de administrador...
+echo [INFO] Esto tardara aproximadamente 1 minuto. Espere por favor...
+
+rem Forzar a que el instalador no pida permisos de administrador (bypasea UAC)
+set "__COMPAT_LAYER=RunAsInvoker"
+"%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=0 Include_test=0 Include_pip=1 Include_doc=0
+set "__COMPAT_LAYER="
+
+if errorlevel 1 (
+    echo [ERROR] Fallo la instalacion de Python.
+    if "%PYTHON_INSTALLER%"=="python_installer.exe" del python_installer.exe >nul 2>&1
+    pause
+    exit /b 1
+)
+if "%PYTHON_INSTALLER%"=="python_installer.exe" del python_installer.exe >nul 2>&1
+echo [OK] Instalacion completada con exito.
+echo.
+
+echo [PASO 3/3] Configurando variables de entorno temporales...
+set "PATH=%LOCALAPPDATA%\Programs\Python\Python312\;%LOCALAPPDATA%\Programs\Python\Python312\Scripts\;%PATH%"
+
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] No se pudo verificar la instalacion de Python en el PATH temporal.
+    echo Por favor, cierre esta ventana e intente abrir iniciar_servidor.bat de nuevo.
+    pause
+    exit /b 1
+)
+echo [OK] Entorno de Python configurado correctamente.
+echo.
+
+:python_installed
 
 rem 2. Crear o reparar entorno virtual si es necesario
 set VENV_OK=1
@@ -107,9 +115,11 @@ if errorlevel 1 (
 )
 
 rem 4. Instalar navegadores de Playwright
+echo [INFO] Configurando Playwright para usar navegadores locales...
+set "PLAYWRIGHT_BROWSERS_PATH=%~dp0playwright_browsers"
+
 echo [INFO] Instalando navegadores de automatizacion (Playwright) de forma silenciosa...
 .venv\Scripts\playwright.exe install chromium msedge >nul 2>&1
-call npx playwright install --with-deps >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] No se pudieron instalar los navegadores de Playwright.
     echo Asegurate de tener conexion a Internet.

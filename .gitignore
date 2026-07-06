@@ -21,3 +21,9 @@ storage/values-monitors.json
 storage/debug-*.png
 storage/debug-*.html
 storage/debug-*.url.txt
+
+# Binarios descargados
+playwright_browsers/
+*.exe
+*.msi
+*.bak
