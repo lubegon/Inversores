@@ -31,9 +31,14 @@ if %errorlevel% neq 0 (
     )
     echo.
     
-    echo [PASO 2/3] Instalando Python de forma silenciosa...
+    echo [PASO 2/3] Instalando Python de forma silenciosa sin permisos de administrador...
     echo [INFO] Esto tardara aproximadamente 1 minuto. Espere por favor...
-    "%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 Include_pip=1 Include_doc=0
+    
+    rem Forzar a que el instalador no pida permisos de administrador (bypasea UAC)
+    set "__COMPAT_LAYER=RunAsInvoker"
+    "%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=0 Include_test=0 Include_pip=1 Include_doc=0
+    set "__COMPAT_LAYER="
+    
     if errorlevel 1 (
         echo [ERROR] Fallo la instalacion de Python.
         if "%PYTHON_INSTALLER%"=="python_installer.exe" del python_installer.exe >nul 2>&1
@@ -104,7 +109,7 @@ if errorlevel 1 (
 rem 4. Instalar navegadores de Playwright
 echo [INFO] Instalando navegadores de automatizacion (Playwright) de forma silenciosa...
 .venv\Scripts\playwright.exe install chromium msedge >nul 2>&1
-call npx playwright install >nul 2>&1
+call npx playwright install --with-deps >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] No se pudieron instalar los navegadores de Playwright.
     echo Asegurate de tener conexion a Internet.
