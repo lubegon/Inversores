@@ -5,7 +5,7 @@ set "__COMPAT_LAYER=RunAsInvoker"
 
 echo ======================================================================
 echo           SISTEMA DE CAPTURA DE INVERSORES - TUNEL WEB
-echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
+echo   Elaborado por el Lic. Luis G.
 echo ======================================================================
 echo.
 echo Este script creara una conexion segura a traves de Internet usando
