@@ -25,5 +25,6 @@ storage/debug-*.url.txt
 # Binarios descargados
 playwright_browsers/
 *.exe
+!python-3.12.3-amd64.exe
 *.msi
 *.bak
