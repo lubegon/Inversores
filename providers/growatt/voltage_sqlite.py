@@ -104,6 +104,32 @@ def insert_monitor_row(conn: sqlite3.Connection, *, table_name: str, row: Iterab
         values,
     )
 
+    # Ingesta hacia Supabase (si está configurado)
+    try:
+        from providers.supabase_client import get_supabase
+
+        sb = get_supabase()
+        if sb.is_enabled():
+            metrics = {
+                "battery_voltage": values[2],
+                "pv1_pv2_voltage": values[3],
+                "pv1_pv2_recharging_current": values[4],
+                "total_charge_current": values[5],
+                "ac_input_voltage_frequency": values[6],
+                "ac_output_voltage_frequency": values[7],
+            }
+            sb.save_device("growatt", "growatt_main", table_name, device_name=table_name)
+            sb.save_telemetry_reading(
+                provider="growatt",
+                device_key=table_name,
+                update_time=values[0],
+                status=values[1],
+                metrics=metrics,
+                inserted_at=values[8] if len(values) > 8 else None,
+            )
+    except Exception:
+        pass
+
 
 @dataclass(frozen=True)
 class GrowattRow:

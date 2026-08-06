@@ -670,6 +670,11 @@ def _upsert_meta_plant(conn: sqlite3.Connection, plant_id: str, plant_name: str 
         """,
         (plant_id, plant_name, now),
     )
+    try:
+        from providers.supabase_client import get_supabase
+        get_supabase().save_plant("shinemonitor", plant_id, plant_name or "")
+    except Exception:
+        pass
 
 
 def _upsert_meta_device(
@@ -693,6 +698,11 @@ def _upsert_meta_device(
         """,
         (device_key, plant_id, device_name, table_name, now),
     )
+    try:
+        from providers.supabase_client import get_supabase
+        get_supabase().save_device("shinemonitor", plant_id, device_key, device_name or "", metadata={"table_name": table_name})
+    except Exception:
+        pass
 
 
 def _insert_row(
@@ -742,6 +752,22 @@ def _insert_row(
         f'"{table}" ({quoted_fields}) VALUES ({placeholders})',
         values,
     )
+    try:
+        from providers.supabase_client import get_supabase
+        sb = get_supabase()
+        if sb.is_enabled():
+            dev_k = device_key or table
+            update_t = (data or {}).get("Data Details Update Time", "") or (data or {}).get("update_time", "")
+            sb.save_telemetry_reading(
+                provider="shinemonitor",
+                device_key=dev_k,
+                update_time=update_t,
+                status=status,
+                metrics=data or {},
+                inserted_at=captured_at,
+            )
+    except Exception:
+        pass
 
 
 def _insert_plant_event(
@@ -760,6 +786,13 @@ def _insert_plant_event(
         """,
         (captured_at, plant_id, plant_name, status, status_detail),
     )
+    try:
+        from providers.supabase_client import get_supabase
+        sb = get_supabase()
+        if sb.is_enabled():
+            sb.save_plant_event("shinemonitor", plant_id, status, status_detail or "", inserted_at=captured_at)
+    except Exception:
+        pass
 
 
 def _load_plants(storage_dir: Path) -> list[PlantRef]:

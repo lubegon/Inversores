@@ -624,6 +624,14 @@ def _upsert_meta_monitor(
         """,
         (monitor_key, monitor_name, table_name, seen_at),
     )
+    try:
+        from providers.supabase_client import get_supabase
+        sb = get_supabase()
+        if sb.is_enabled():
+            sb.save_plant("values", monitor_key, monitor_name)
+            sb.save_device("values", monitor_key, monitor_key, monitor_name, metadata={"table_name": table_name})
+    except Exception:
+        pass
 
 
 def _upsert_meta_columns(
@@ -673,6 +681,20 @@ def _insert_row(
         f"INSERT INTO {table_name} ({sql_cols}) VALUES ({placeholders})",
         params,
     )
+    try:
+        from providers.supabase_client import get_supabase
+        sb = get_supabase()
+        if sb.is_enabled():
+            sb.save_telemetry_reading(
+                provider="values",
+                device_key=table_name,
+                update_time=row_timestamp or "",
+                status="Normal",
+                metrics=values_by_header,
+                inserted_at=captured_at,
+            )
+    except Exception:
+        pass
 
 
 def main() -> None:

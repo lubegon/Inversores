@@ -317,10 +317,21 @@ def _report_history_copy_from_current(*, slot: str) -> Path | None:
                 shutil.copy2(REPORT_PATH, downloads_dir / out_name)
         except Exception:
             pass
+
+        # Subir copia a Supabase Storage (si está configurado)
+        try:
+            from providers.supabase_client import get_supabase
+            sb = get_supabase()
+            if sb.is_enabled():
+                sb.upload_report_file(out_path, out_name)
+                sb.upload_report_file(REPORT_PATH, REPORT_FILENAME)
+        except Exception:
+            pass
             
         return out_path
     except Exception:
         return None
+
 
 
 def _export_rid_seen(rid: str) -> bool:
@@ -4018,8 +4029,24 @@ class Handler(BaseHTTPRequestHandler):
             if not p or not p.exists() or not p.is_file():
                 _json_response(self, 404, {"error": "archivo no encontrado"})
                 return
+
+            # Intentar servir o redireccionar via Supabase Storage URL
+            try:
+                from providers.supabase_client import get_supabase
+                sb = get_supabase()
+                if sb.is_enabled():
+                    storage_url = sb.get_report_download_url(p.name)
+                    if storage_url:
+                        self.send_response(302)
+                        self.send_header("Location", storage_url)
+                        self.end_headers()
+                        return
+            except Exception:
+                pass
+
             try:
                 data = p.read_bytes()
+
                 self.send_response(200)
                 self.send_header(
                     "Content-Type",
