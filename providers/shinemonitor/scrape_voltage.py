@@ -276,8 +276,9 @@ def _login_if_needed(page: Page, user: str, password: str) -> None:
     except Exception:
         pass
 
-    usr_loc = page.locator("#loginusr > input")
-    pwd_loc = page.locator("#loginpwd > input")
+    usr_loc = page.locator("#loginusr > input, input[name='username'], #username").first
+    pwd_loc = page.locator("#mypassword, #loginpwd > input, input[type='password']").first
+    btn_loc = page.locator("#loginsub, #loginbtn, button[type='submit']").first
 
     try:
         usr_loc.wait_for(state="visible", timeout=3_000)
@@ -287,15 +288,13 @@ def _login_if_needed(page: Page, user: str, password: str) -> None:
         return
 
     try:
-        pwd_loc.wait_for(state="visible", timeout=5_000)
-        usr_loc.fill(user)
-        pwd_loc.fill(password)
+        if pwd_loc.is_visible():
+            usr_loc.fill(user)
+            pwd_loc.fill(password)
+            if btn_loc.is_visible():
+                btn_loc.click()
 
-        btn = page.locator("#loginsub")
-        if btn.is_visible():
-            btn.click()
-
-        page.wait_for_selector("#plant_tree", timeout=60_000)
+            page.wait_for_selector("#plant_tree", timeout=60_000)
     except Exception as e:
         if page.locator("#plant_tree").is_visible():
             return
@@ -822,7 +821,6 @@ def main() -> None:
 
             try:
                 page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=nav_timeout_ms)
-                page.wait_for_selector("#loginusr > input", timeout=30_000)
                 page.wait_for_timeout(300)
                 _login_if_needed(page, user=user, password=password)
 

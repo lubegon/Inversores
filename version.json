@@ -1,5 +1,5 @@
 {
-  "version": "2.2.1",
+  "version": "2.2.2",
   "release_date": "2026-08-07",
-  "notes": "Manejo resiliente de inicio de sesión y detección de sesión activa en ShineMonitor."
+  "notes": "Soporte multi-selector (#mypassword) en el formulario de inicio de sesión de ShineMonitor."
 }
