@@ -4456,6 +4456,13 @@ def main() -> None:
     host = os.environ.get("WEBUI_HOST", "0.0.0.0")
     port = int(os.environ.get("WEBUI_PORT", "8000"))
 
+    # Comprobar actualizaciones en segundo plano
+    try:
+        from providers.version_checker import check_for_updates
+        threading.Thread(target=check_for_updates, daemon=True).start()
+    except Exception:
+        pass
+
     # Limpiar estado anterior al arrancar (logs y progreso a 0)
     for p in PROVIDERS:
         _clear_log(p)
