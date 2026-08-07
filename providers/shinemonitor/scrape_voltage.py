@@ -644,7 +644,7 @@ def _extract_grid_data(
         return None
 
     update_time = get_cell_by_headers(
-        ["update time", "data time", "time", "fecha", "hora"]
+        ["timestamp", "update time", "data time", "time", "fecha", "hora"]
     )
 
     if not update_time and len(cells) > 0:
@@ -666,9 +666,9 @@ def _extract_grid_data(
     }
 
     mapping = [
-        ("r_voltage", ["r voltage", "phase a voltage", "va", "voltage r", "grid voltage r"]),
-        ("s_voltage", ["s voltage", "phase b voltage", "vb", "voltage s", "grid voltage s"]),
-        ("t_voltage", ["t voltage", "phase c voltage", "vc", "voltage t", "grid voltage t"]),
+        ("r_voltage", ["grid voltage", "r voltage", "phase a voltage", "va", "voltage r", "grid voltage r"]),
+        ("s_voltage", ["inverter voltage", "s voltage", "phase b voltage", "vb", "voltage s", "grid voltage s"]),
+        ("t_voltage", ["pv voltage", "t voltage", "phase c voltage", "vc", "voltage t", "grid voltage t"]),
         ("rs_voltage", ["rs voltage", "vrs", "line voltage rs", "uab"]),
         ("st_voltage", ["st voltage", "vst", "line voltage st", "ubc"]),
         ("tr_voltage", ["tr voltage", "vtr", "line voltage tr", "uca"]),
@@ -694,6 +694,17 @@ def _extract_grid_data(
             voltages["s_voltage"] = voltage_cells[1][1]
         if len(voltage_cells) >= 3:
             voltages["t_voltage"] = voltage_cells[2][1]
+
+    parsed_cells: dict[str, Any] = {}
+    for h, c in zip(headers, cells):
+        if h and c:
+            clean_h = h.strip()
+            parsed_cells[clean_h] = c.strip()
+            parsed_val = _parse_float(c)
+            if parsed_val is not None:
+                parsed_cells[f"{clean_h}_num"] = parsed_val
+
+    raw_data["parsed_cells"] = parsed_cells
 
     return update_time, voltages, raw_data
 
@@ -746,6 +757,10 @@ def _insert_voltage_reading(
         "tr_voltage": voltages.get("tr_voltage"),
         "table_name": table_name,
     }
+    parsed_cells = raw_data.get("parsed_cells")
+    if isinstance(parsed_cells, dict):
+        metrics.update(parsed_cells)
+
     save_telemetry_reading(
         device_key=device_key,
         plant_id=plant_id,

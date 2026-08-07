@@ -1,5 +1,5 @@
 {
-  "version": "2.2.3",
+  "version": "2.2.4",
   "release_date": "2026-08-07",
-  "notes": "Redirección limpia de main.html, espera por state=attached y guardado de cookies de sesión en ShineMonitor."
+  "notes": "Soporte de mapeo para Grid Voltage, Inverter Voltage, PV Voltage y Timestamp de ShineMonitor en Supabase."
 }
