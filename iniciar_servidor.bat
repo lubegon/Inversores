@@ -1,18 +1,10 @@
 @echo off
 rem Configurar codificacion UTF-8 para evitar caracteres extranos
 chcp 65001 > nul
-rem Mostrar pop-up de aviso de actualizacion al usuario
-powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('AVISO IMPORTANTE DE ACTUALIZACION:`n`nSe requiere que descargues nuevamente el archivo o carpeta del proyecto desde GitHub, ya que se ha publicado una nueva actualizacion.`n`nSe recomienda borrar la carpeta anterior antes de usar la nueva version para garantizar la correcta sincronizacion con Supabase.', 'Nueva Actualizacion Disponible - Sistema de Inversores', 'OK', [System.Windows.Forms.MessageBoxIcon]::Information)" > nul 2>&1
-
 title Iniciar Servidor - Captura de Inversores
 echo ======================================================================
 echo           INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
-echo ======================================================================
-echo.
-echo [AVISO DE ACTUALIZACION]
-echo  * Recuerde descargar la nueva version desde GitHub.
-echo  * Se recomienda borrar la carpeta anterior antes de continuar.
 echo ======================================================================
 echo.
 
@@ -160,7 +152,10 @@ if not exist .env (
     )
 )
 
-rem 6. Iniciar Servidor
+rem 6. Verificar si existe una nueva version en GitHub
+.venv\Scripts\python.exe -m providers.version_checker >nul 2>&1
+
+rem 7. Iniciar Servidor
 cls
 echo ======================================================================
 echo           SISTEMA DE CAPTURA DE INVERSORES
