@@ -1,9 +1,11 @@
 @echo off
 rem Configurar codificacion UTF-8 para evitar caracteres extranos
 chcp 65001 > nul
+rem Desactivar verificacion estricta SSL en Python para evitar bloqueos en Windows
+set PYTHONHTTPSVERIFY=0
 title Iniciar Servidor - Captura de Inversores
 echo ======================================================================
-echo       INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES (v2.1.4)
+echo       INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES (v2.1.5)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.
@@ -158,7 +160,7 @@ rem 6. Verificar si existe una nueva version en GitHub
 rem 7. Iniciar Servidor
 cls
 echo ======================================================================
-echo       SISTEMA DE CAPTURA DE INVERSORES (v2.1.4)
+echo       SISTEMA DE CAPTURA DE INVERSORES (v2.1.5)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.

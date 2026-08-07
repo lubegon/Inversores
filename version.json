@@ -1,5 +1,5 @@
 {
-  "version": "2.1.4",
+  "version": "2.1.5",
   "release_date": "2026-08-07",
-  "notes": "Solución de compatibilidad SSL en Windows (evita CERTIFICATE_VERIFY_FAILED en auto-actualización)."
+  "notes": "Desactivación global de verificación SSL en entorno batch para compatibilidad universal con Windows."
 }
