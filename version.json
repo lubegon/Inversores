@@ -1,5 +1,5 @@
 {
-  "version": "2.1.2",
+  "version": "2.1.4",
   "release_date": "2026-08-07",
-  "notes": "Registro de versión de cliente (client_version) en la ingesta de Supabase."
+  "notes": "Solución de compatibilidad SSL en Windows (evita CERTIFICATE_VERIFY_FAILED en auto-actualización)."
 }

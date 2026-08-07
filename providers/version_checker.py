@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import ssl
 import sys
 import tempfile
 import urllib.request
@@ -23,9 +24,24 @@ GITHUB_ZIP_URL = "https://github.com/lubegon/Inversores/archive/refs/heads/main.
 PROTECTED_PATHS = {
     ".env",
     ".venv",
+    ".git",
+    ".agents",
     "storage",
     "playwright_browsers",
 }
+
+
+def _urlopen_with_ssl_fallback(req: urllib.request.Request, timeout: int = 25) -> bytes:
+    """Intenta descargar usando el certificado por defecto; si falla SSL en Windows, usa fallback resiliente."""
+    try:
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            return resp.read()
+    except Exception as exc:
+        logger.debug(f"[SSL Fallback] Reintentando con SSL unverified context debido a: {exc}")
+        ctx_unverified = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx_unverified) as resp:
+            return resp.read()
 
 
 def get_local_version() -> str:
@@ -75,13 +91,15 @@ def _show_info_popup(msg: str, title: str = "Sistema de Inversores") -> None:
             pass
 
 
-def perform_auto_update(remote_ver: str) -> bool:
+def perform_auto_update(remote_ver: str, quiet: bool = False) -> bool:
     """Descarga el código actualizado de GitHub y reemplaza los archivos preservando configuraciones."""
     try:
         logger.info(f"[AutoUpdate] Descargando actualización v{remote_ver} desde GitHub...")
-        req = urllib.request.Request(GITHUB_ZIP_URL, headers={"User-Agent": "Voltguard-AutoUpdate/2.0"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            zip_bytes = resp.read()
+        req = urllib.request.Request(
+            GITHUB_ZIP_URL,
+            headers={"User-Agent": "Voltguard-AutoUpdate/2.0"}
+        )
+        zip_bytes = _urlopen_with_ssl_fallback(req, timeout=30)
 
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
         
@@ -96,24 +114,29 @@ def perform_auto_update(remote_ver: str) -> bool:
         zf.extractall(temp_dir)
         source_dir = temp_dir / prefix.rstrip("/") if prefix else temp_dir
 
+        copied_count = 0
         # Sobrescribir archivos manteniendo los protegidos
         for root, dirs, files in os.walk(source_dir):
             rel_path = Path(root).relative_to(source_dir)
             target_dir = BASE_DIR / rel_path
 
-            # Ignorar si es parte de una ruta protegida
+            # Ignorar carpetas protegidas o del sistema
             parts = rel_path.parts
-            if parts and (parts[0] in PROTECTED_PATHS or parts[0].endswith(".sqlite")):
+            if parts and (parts[0] in PROTECTED_PATHS or parts[0].startswith(".")):
                 continue
 
             target_dir.mkdir(parents=True, exist_ok=True)
 
             for file in files:
-                if file in PROTECTED_PATHS or file.endswith(".sqlite") or file == ".env":
+                if file in PROTECTED_PATHS or file.endswith(".sqlite") or file.endswith(".log") or file == ".env":
                     continue
                 src_file = Path(root) / file
                 dst_file = target_dir / file
-                shutil.copy2(src_file, dst_file)
+                try:
+                    shutil.copy2(src_file, dst_file)
+                    copied_count += 1
+                except Exception as copy_err:
+                    logger.warning(f"[AutoUpdate] No se pudo copiar {file}: {copy_err}")
 
         # Limpiar directorio temporal
         try:
@@ -121,21 +144,23 @@ def perform_auto_update(remote_ver: str) -> bool:
         except Exception:
             pass
 
-        logger.info(f"[AutoUpdate] Sistema actualizado exitosamente a v{remote_ver}")
-        _show_info_popup(
-            f"¡Sistema Actualizado con Éxito a la versión v{remote_ver}!\n\n"
-            f"Tus configuraciones (.env) y datos locales se han mantenido intactos.\n"
-            f"El sistema continuará iniciándose normalmente.",
-            "Actualización Completada"
-        )
+        logger.info(f"[AutoUpdate] Sistema actualizado exitosamente a v{remote_ver} ({copied_count} archivos actualizados)")
+        if not quiet:
+            _show_info_popup(
+                f"¡Sistema Actualizado con Éxito a la versión v{remote_ver}!\n\n"
+                f"Tus configuraciones (.env) y datos locales se han mantenido intactos.\n"
+                f"El sistema continuará iniciándose normalmente.",
+                "Actualización Completada"
+            )
         return True
     except Exception as exc:
         logger.error(f"[AutoUpdate] Error al actualizar: {exc}")
-        _show_info_popup(
-            f"No se pudo completar la auto-actualización: {exc}\n\n"
-            f"El sistema continuará ejecutándose con la versión actual.",
-            "Error de Actualización"
-        )
+        if not quiet:
+            _show_info_popup(
+                f"No se pudo completar la auto-actualización:\n{exc}\n\n"
+                f"El sistema continuará ejecutándose con la versión actual.",
+                "Error de Actualización"
+            )
         return False
 
 
@@ -149,15 +174,15 @@ def check_for_updates() -> bool:
             REMOTE_VERSION_URL,
             headers={"User-Agent": "Voltguard-VersionCheck/2.0"}
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            remote_ver = data.get("version", "1.0.0")
-            
-            if _parse_version(remote_ver) > _parse_version(local_ver):
-                logger.warning(f"[Update] Nueva versión disponible: v{remote_ver} (Actual: v{local_ver})")
-                should_update = _ask_update_confirmation(local_ver, remote_ver, data.get("notes", ""))
-                if should_update:
-                    return perform_auto_update(remote_ver)
+        raw_bytes = _urlopen_with_ssl_fallback(req, timeout=10)
+        data = json.loads(raw_bytes.decode("utf-8"))
+        remote_ver = data.get("version", "1.0.0")
+        
+        if _parse_version(remote_ver) > _parse_version(local_ver):
+            logger.warning(f"[Update] Nueva versión disponible: v{remote_ver} (Actual: v{local_ver})")
+            should_update = _ask_update_confirmation(local_ver, remote_ver, data.get("notes", ""))
+            if should_update:
+                return perform_auto_update(remote_ver)
     except Exception as exc:
         logger.debug(f"[Update] No se pudo verificar versión remota: {exc}")
 
