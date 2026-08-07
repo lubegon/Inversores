@@ -25,6 +25,17 @@ def _get_hostname() -> str:
         return os.getenv("COMPUTERNAME") or os.getenv("HOSTNAME") or "Desconocida"
 
 
+def _get_client_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
 def _get_version() -> str:
     try:
         from providers.version_checker import get_local_version
@@ -144,6 +155,8 @@ class SupabaseManager:
                 m["client_host"] = _get_hostname()
             if "client_version" not in m:
                 m["client_version"] = _get_version()
+            if "client_ip" not in m:
+                m["client_ip"] = _get_client_ip()
 
             payload = {
                 "provider": provider,

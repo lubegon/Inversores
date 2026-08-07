@@ -1,5 +1,5 @@
 {
-  "version": "2.1.7",
+  "version": "2.1.8",
   "release_date": "2026-08-07",
-  "notes": "Exportación limpia de funciones auxiliares en supabase_client y verificación del motor ShineMonitor."
+  "notes": "Captura automática de Dirección IP de cada PC para telemetría en Supabase."
 }
