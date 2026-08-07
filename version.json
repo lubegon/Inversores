@@ -1,5 +1,5 @@
 {
-  "version": "2.1.8",
+  "version": "2.1.9",
   "release_date": "2026-08-07",
-  "notes": "Captura automática de Dirección IP de cada PC para telemetría en Supabase."
+  "notes": "Registro centralizado de eventos de auto-actualizaciones y errores en Supabase."
 }

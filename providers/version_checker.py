@@ -91,8 +91,24 @@ def _show_info_popup(msg: str, title: str = "Sistema de Inversores") -> None:
             pass
 
 
+def _report_update_to_supabase(event_type: str, message: str) -> None:
+    try:
+        import socket
+        from providers.supabase_client import save_plant_event
+        hostname = socket.gethostname()
+        save_plant_event(
+            provider="system",
+            plant_id=hostname,
+            event_type=event_type,
+            message=message,
+        )
+    except Exception:
+        pass
+
+
 def perform_auto_update(remote_ver: str, quiet: bool = False) -> bool:
     """Descarga el código actualizado de GitHub y reemplaza los archivos preservando configuraciones."""
+    local_ver = get_local_version()
     try:
         logger.info(f"[AutoUpdate] Descargando actualización v{remote_ver} desde GitHub...")
         req = urllib.request.Request(
@@ -145,6 +161,10 @@ def perform_auto_update(remote_ver: str, quiet: bool = False) -> bool:
             pass
 
         logger.info(f"[AutoUpdate] Sistema actualizado exitosamente a v{remote_ver} ({copied_count} archivos actualizados)")
+        _report_update_to_supabase(
+            "UPDATE_SUCCESS",
+            f"Actualización exitosa de v{local_ver} a v{remote_ver} ({copied_count} archivos)",
+        )
         if not quiet:
             _show_info_popup(
                 f"¡Sistema Actualizado con Éxito a la versión v{remote_ver}!\n\n"
@@ -155,6 +175,10 @@ def perform_auto_update(remote_ver: str, quiet: bool = False) -> bool:
         return True
     except Exception as exc:
         logger.error(f"[AutoUpdate] Error al actualizar: {exc}")
+        _report_update_to_supabase(
+            "UPDATE_ERROR",
+            f"Fallo al actualizar de v{local_ver} a v{remote_ver}: {exc}",
+        )
         if not quiet:
             _show_info_popup(
                 f"No se pudo completar la auto-actualización:\n{exc}\n\n"
