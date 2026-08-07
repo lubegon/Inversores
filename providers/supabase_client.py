@@ -25,6 +25,14 @@ def _get_hostname() -> str:
         return os.getenv("COMPUTERNAME") or os.getenv("HOSTNAME") or "Desconocida"
 
 
+def _get_version() -> str:
+    try:
+        from providers.version_checker import get_local_version
+        return get_local_version()
+    except Exception:
+        return "1.0.0"
+
+
 class SupabaseManager:
     """Administrador centralizado de la conexion e ingesta de datos con Supabase.
     
@@ -134,6 +142,8 @@ class SupabaseManager:
             m = dict(metrics or {})
             if "client_host" not in m:
                 m["client_host"] = _get_hostname()
+            if "client_version" not in m:
+                m["client_version"] = _get_version()
 
             payload = {
                 "provider": provider,
