@@ -808,8 +808,14 @@ def main() -> None:
 
             try:
                 page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=nav_timeout_ms)
+<<<<<<< HEAD
                 page.wait_for_selector("#loginusr > input", timeout=30_000)
                 page.wait_for_timeout(300)
+=======
+                # Espera tras cargar la página principal
+                page.wait_for_selector("#loginusr > input", timeout=30_000)
+                page.wait_for_timeout(300)  # Espera ágil para asegurar carga completa
+>>>>>>> 4dc15f1 (perf: optimizacion masiva de velocidad en captura de ShineMonitor v2.1.1)
                 _login_if_needed(page, user=user, password=password)
 
                 for idx, plant in enumerate(plants, start=1):
@@ -819,6 +825,10 @@ def main() -> None:
                     try:
                         _login_if_needed(page, user=user, password=password)
 
+<<<<<<< HEAD
+=======
+                        # Espera optimizada tras seleccionar planta
+>>>>>>> 4dc15f1 (perf: optimizacion masiva de velocidad en captura de ShineMonitor v2.1.1)
                         page.wait_for_timeout(200)
                         plant_name, tree = _select_plant_and_load_tree(
                             page,
@@ -882,6 +892,10 @@ def main() -> None:
 
                     for dev_index in range(device_count):
                         try:
+<<<<<<< HEAD
+=======
+                            # Espera optimizada tras cargar árbol
+>>>>>>> 4dc15f1 (perf: optimizacion masiva de velocidad en captura de ShineMonitor v2.1.1)
                             page.wait_for_timeout(200)
                             tree = _ensure_tree_loaded(
                                 page,
