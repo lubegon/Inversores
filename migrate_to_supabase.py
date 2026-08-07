@@ -21,10 +21,20 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 from providers.supabase_client import get_supabase
 
 
+def _find_db(base_dir: Path, filename: str) -> Path | None:
+    path1 = base_dir / filename
+    if path1.exists():
+        return path1
+    path2 = base_dir / "Captura_Inversores_Deploy" / filename
+    if path2.exists():
+        return path2
+    return None
+
+
 def migrate_growatt(base_dir: Path) -> None:
-    db_file = base_dir / "Voltage Growatt.sqlite"
-    if not db_file.exists():
-        print(f"[Growatt] Archivo {db_file.name} no encontrado. Omitiendo.")
+    db_file = _find_db(base_dir, "Voltage Growatt.sqlite")
+    if not db_file:
+        print(f"[Growatt] Archivo Voltage Growatt.sqlite no encontrado. Omitiendo.")
         return
 
     print(f"\n--- Migrando {db_file.name} a Supabase ---")
@@ -71,9 +81,9 @@ def migrate_growatt(base_dir: Path) -> None:
 
 
 def migrate_shinemonitor(base_dir: Path) -> None:
-    db_file = base_dir / "Voltage  Shinemonitor.sqlite"
-    if not db_file.exists():
-        print(f"[ShineMonitor] Archivo {db_file.name} no encontrado. Omitiendo.")
+    db_file = _find_db(base_dir, "Voltage  Shinemonitor.sqlite")
+    if not db_file:
+        print(f"[ShineMonitor] Archivo Voltage  Shinemonitor.sqlite no encontrado. Omitiendo.")
         return
 
     print(f"\n--- Migrando {db_file.name} a Supabase ---")
@@ -130,9 +140,9 @@ def migrate_shinemonitor(base_dir: Path) -> None:
 
 
 def migrate_values(base_dir: Path) -> None:
-    db_file = base_dir / "Voltage  Values.sqlite"
-    if not db_file.exists():
-        print(f"[Values] Archivo {db_file.name} no encontrado. Omitiendo.")
+    db_file = _find_db(base_dir, "Voltage  Values.sqlite")
+    if not db_file:
+        print(f"[Values] Archivo Voltage  Values.sqlite no encontrado. Omitiendo.")
         return
 
     print(f"\n--- Migrando {db_file.name} a Supabase ---")
