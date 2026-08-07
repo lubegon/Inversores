@@ -91,12 +91,6 @@ def _desired_table_name(
     device_name: str,
     device_count_in_plant: int,
 ) -> str:
-    """Genera el nombre sugerido para la tabla.
-
-    - Si la planta tiene 1 solo monitor: usar el nombre de la planta (ej: 'Planta_San_Jose').
-    - Si tiene varios: 'Planta_San_Jose_Inverter_1'.
-    - Si no hay nombre de planta: usar el nombre del dispositivo.
-    """
     if plant_name:
         p_clean = _sanitize_name(plant_name)
         if device_count_in_plant <= 1:
@@ -250,7 +244,6 @@ def _insert_plant_event(
 def _launch_browser(p: Any, *, headless: bool) -> Any:
     launch_args = ["--no-sandbox", "--disable-setuid-sandbox"]
 
-    # Soporte para ejecutar en Linux/Docker con Chromium del sistema
     executable_path = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
     if executable_path and Path(executable_path).exists():
         return p.chromium.launch(
@@ -259,7 +252,6 @@ def _launch_browser(p: Any, *, headless: bool) -> Any:
             args=launch_args,
         )
 
-    # Buscar instalación local en carpeta del proyecto (Windows/portable)
     project_root = Path(__file__).resolve().parents[2]
     local_browsers = project_root / "playwright_browsers"
     if local_browsers.exists():
@@ -808,14 +800,8 @@ def main() -> None:
 
             try:
                 page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=nav_timeout_ms)
-<<<<<<< HEAD
                 page.wait_for_selector("#loginusr > input", timeout=30_000)
                 page.wait_for_timeout(300)
-=======
-                # Espera tras cargar la página principal
-                page.wait_for_selector("#loginusr > input", timeout=30_000)
-                page.wait_for_timeout(300)  # Espera ágil para asegurar carga completa
->>>>>>> 4dc15f1 (perf: optimizacion masiva de velocidad en captura de ShineMonitor v2.1.1)
                 _login_if_needed(page, user=user, password=password)
 
                 for idx, plant in enumerate(plants, start=1):
@@ -825,10 +811,6 @@ def main() -> None:
                     try:
                         _login_if_needed(page, user=user, password=password)
 
-<<<<<<< HEAD
-=======
-                        # Espera optimizada tras seleccionar planta
->>>>>>> 4dc15f1 (perf: optimizacion masiva de velocidad en captura de ShineMonitor v2.1.1)
                         page.wait_for_timeout(200)
                         plant_name, tree = _select_plant_and_load_tree(
                             page,
@@ -892,10 +874,6 @@ def main() -> None:
 
                     for dev_index in range(device_count):
                         try:
-<<<<<<< HEAD
-=======
-                            # Espera optimizada tras cargar árbol
->>>>>>> 4dc15f1 (perf: optimizacion masiva de velocidad en captura de ShineMonitor v2.1.1)
                             page.wait_for_timeout(200)
                             tree = _ensure_tree_loaded(
                                 page,

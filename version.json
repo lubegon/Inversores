@@ -1,5 +1,5 @@
 {
-  "version": "2.1.5",
+  "version": "2.1.6",
   "release_date": "2026-08-07",
-  "notes": "Desactivación global de verificación SSL en entorno batch para compatibilidad universal con Windows."
+  "notes": "Corrección de sintaxis y limpieza total de marcadores de versión en ShineMonitor."
 }
