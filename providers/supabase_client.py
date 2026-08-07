@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,13 @@ except ImportError:
     Client = Any
 
 logger = logging.getLogger("supabase_client")
+
+
+def _get_hostname() -> str:
+    try:
+        return socket.gethostname()
+    except Exception:
+        return os.getenv("COMPUTERNAME") or os.getenv("HOSTNAME") or "Desconocida"
 
 
 class SupabaseManager:
@@ -52,7 +60,6 @@ class SupabaseManager:
     def _log_unconfigured_once(self) -> None:
         pass
 
-
     def save_plant(
         self,
         provider: str,
@@ -63,11 +70,14 @@ class SupabaseManager:
         if not self.is_enabled():
             return False
         try:
+            meta = dict(metadata or {})
+            if "hostname" not in meta:
+                meta["hostname"] = _get_hostname()
             payload = {
                 "provider": provider,
                 "plant_id": str(plant_id),
                 "name": name or str(plant_id),
-                "metadata": metadata or {},
+                "metadata": meta,
                 "updated_at": datetime.now().isoformat(),
             }
             self.client.table("monitors_plants").upsert(
@@ -90,13 +100,16 @@ class SupabaseManager:
         if not self.is_enabled():
             return False
         try:
+            meta = dict(metadata or {})
+            if "hostname" not in meta:
+                meta["hostname"] = _get_hostname()
             payload = {
                 "provider": provider,
                 "plant_id": str(plant_id),
                 "device_key": str(device_key),
                 "device_name": device_name or str(device_key),
                 "device_type": device_type,
-                "metadata": metadata or {},
+                "metadata": meta,
             }
             self.client.table("devices").upsert(
                 payload, on_conflict="provider,device_key"
@@ -118,12 +131,16 @@ class SupabaseManager:
         if not self.is_enabled():
             return False
         try:
+            m = dict(metrics or {})
+            if "client_host" not in m:
+                m["client_host"] = _get_hostname()
+
             payload = {
                 "provider": provider,
                 "device_key": str(device_key),
                 "update_time": update_time or "",
                 "status": status or "",
-                "metrics": metrics or {},
+                "metrics": m,
             }
             if inserted_at:
                 payload["inserted_at"] = inserted_at
