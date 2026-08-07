@@ -3,7 +3,7 @@ rem Configurar codificacion UTF-8 para evitar caracteres extranos
 chcp 65001 > nul
 title Iniciar Servidor - Captura de Inversores
 echo ======================================================================
-echo           INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES
+echo       INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES (v2.0.0)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.
@@ -158,7 +158,7 @@ rem 6. Verificar si existe una nueva version en GitHub
 rem 7. Iniciar Servidor
 cls
 echo ======================================================================
-echo           SISTEMA DE CAPTURA DE INVERSORES
+echo       SISTEMA DE CAPTURA DE INVERSORES (v2.0.0)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.
