@@ -270,14 +270,36 @@ def _dump_debug(page: Page, run_dir: Path, prefix: str) -> None:
 
 
 def _login_if_needed(page: Page, user: str, password: str) -> None:
-    if page.locator("#loginusr > input").is_visible():
-        page.fill("#loginusr > input", user)
-        page.fill("#loginpwd > input", password)
+    try:
+        if page.locator("#plant_tree").is_visible():
+            return
+    except Exception:
+        pass
 
-        with page.expect_navigation(timeout=60_000):
-            page.click("#loginsub")
+    usr_loc = page.locator("#loginusr > input")
+    pwd_loc = page.locator("#loginpwd > input")
+
+    try:
+        usr_loc.wait_for(state="visible", timeout=3_000)
+    except Exception:
+        if page.locator("#plant_tree").is_visible():
+            return
+        return
+
+    try:
+        pwd_loc.wait_for(state="visible", timeout=5_000)
+        usr_loc.fill(user)
+        pwd_loc.fill(password)
+
+        btn = page.locator("#loginsub")
+        if btn.is_visible():
+            btn.click()
 
         page.wait_for_selector("#plant_tree", timeout=60_000)
+    except Exception as e:
+        if page.locator("#plant_tree").is_visible():
+            return
+        raise e
 
 
 def _tree_is_empty(tree: Locator) -> bool:

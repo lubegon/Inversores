@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "release_date": "2026-08-07",
-  "notes": "Corrección de parámetro de inicio de sesión _login_if_needed en ShineMonitor."
+  "notes": "Manejo resiliente de inicio de sesión y detección de sesión activa en ShineMonitor."
 }
