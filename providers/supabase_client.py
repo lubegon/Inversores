@@ -234,3 +234,19 @@ class SupabaseManager:
 
 # Singleton conveniente para usar en todo el proyecto
 get_supabase = SupabaseManager.get_instance
+
+
+def save_plant(*args, **kwargs) -> bool:
+    return SupabaseManager.get_instance().save_plant(*args, **kwargs)
+
+
+def save_device(*args, **kwargs) -> bool:
+    return SupabaseManager.get_instance().save_device(*args, **kwargs)
+
+
+def save_telemetry_reading(*args, **kwargs) -> bool:
+    return SupabaseManager.get_instance().save_telemetry_reading(*args, **kwargs)
+
+
+def save_plant_event(*args, **kwargs) -> bool:
+    return SupabaseManager.get_instance().save_plant_event(*args, **kwargs)
