@@ -1,5 +1,5 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "release_date": "2026-08-07",
-  "notes": "Soporte de mapeo para Grid Voltage, Inverter Voltage, PV Voltage y Timestamp de ShineMonitor en Supabase."
+  "notes": "Corrección de la firma save_telemetry_reading con soporte flexible de keyword arguments (plant_id, raw_data) para transmisión limpia a Supabase."
 }

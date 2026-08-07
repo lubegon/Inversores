@@ -140,12 +140,15 @@ class SupabaseManager:
 
     def save_telemetry_reading(
         self,
-        provider: str,
-        device_key: str,
-        update_time: str,
+        provider: str = "unknown",
+        device_key: str = "",
+        update_time: str = "",
         status: str = "",
         metrics: dict[str, Any] | None = None,
         inserted_at: str | None = None,
+        plant_id: str | None = None,
+        raw_data: Any = None,
+        **kwargs: Any,
     ) -> bool:
         if not self.is_enabled():
             return False
@@ -157,10 +160,15 @@ class SupabaseManager:
                 m["client_version"] = _get_version()
             if "client_ip" not in m:
                 m["client_ip"] = _get_client_ip()
+            if plant_id and "plant_id" not in m:
+                m["plant_id"] = str(plant_id)
+
+            prov = provider or kwargs.get("provider", "unknown")
+            dev_k = device_key or kwargs.get("device_key", "")
 
             payload = {
-                "provider": provider,
-                "device_key": str(device_key),
+                "provider": prov,
+                "device_key": str(dev_k),
                 "update_time": update_time or "",
                 "status": status or "",
                 "metrics": m,
