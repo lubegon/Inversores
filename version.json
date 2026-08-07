@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "release_date": "2026-08-07",
-  "notes": "Integración con Supabase PostgreSQL, tracking automático de PC y sincronización en tiempo real."
+  "notes": "Sistema de Auto-Actualización Automática de 1-Clic integrado (preserva .env y datos locales)."
 }

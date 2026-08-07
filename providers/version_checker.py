@@ -1,17 +1,31 @@
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
+import shutil
 import sys
+import tempfile
 import urllib.request
+import zipfile
 import ctypes
 from pathlib import Path
 
 logger = logging.getLogger("version_checker")
 
-VERSION_FILE = Path(__file__).resolve().parent.parent / "version.json"
+BASE_DIR = Path(__file__).resolve().parent.parent
+VERSION_FILE = BASE_DIR / "version.json"
 REMOTE_VERSION_URL = "https://raw.githubusercontent.com/lubegon/Inversores/main/version.json"
+GITHUB_ZIP_URL = "https://github.com/lubegon/Inversores/archive/refs/heads/main.zip"
+
+# Archivos y carpetas protegidas que NUNCA deben sobrescribirse durante la auto-actualización
+PROTECTED_PATHS = {
+    ".env",
+    ".venv",
+    "storage",
+    "playwright_browsers",
+}
 
 
 def get_local_version() -> str:
@@ -32,30 +46,102 @@ def _parse_version(v_str: str) -> tuple[int, ...]:
         return (0, 0, 0)
 
 
-def _show_update_popup(local_ver: str, remote_ver: str, notes: str) -> None:
+def _ask_update_confirmation(local_ver: str, remote_ver: str, notes: str) -> bool:
     msg = (
-        f"AVISO IMPORTANTE DE ACTUALIZACIÓN (Versión v{remote_ver} Disponible)\n\n"
-        f"Tu versión actual (v{local_ver}) está desactualizada.\n\n"
-        f"Se requiere que descargues nuevamente la última versión desde GitHub "
-        f"y se recomienda eliminar la carpeta anterior antes de continuar para garantizar "
-        f"la correcta sincronización con Supabase.\n\n"
-        f"Notas de la versión v{remote_ver}:\n"
-        f"• {notes if notes else 'Mejoras de rendimiento y sincronización.'}"
+        f"NUEVA ACTUALIZACIÓN DISPONIBLE (v{remote_ver})\n\n"
+        f"Tu versión actual es: v{local_ver}\n"
+        f"Versión disponible en GitHub: v{remote_ver}\n\n"
+        f"Notas del cambio:\n"
+        f"• {notes if notes else 'Mejoras de rendimiento y sincronización.'}\n\n"
+        f"¿Deseas actualizar automáticamente ahora mismo?"
     )
     title = "Actualización Disponible - Sistema de Inversores"
 
     if sys.platform == "win32":
         try:
-            # 0x30 = MB_ICONWARNING
-            ctypes.windll.user32.MessageBoxW(0, msg, title, 0x30)
+            # 0x24 = MB_YESNO (4) | MB_ICONQUESTION (0x20)
+            res = ctypes.windll.user32.MessageBoxW(0, msg, title, 0x24)
+            return res == 6  # IDYES == 6
+        except Exception:
+            pass
+    return False
+
+
+def _show_info_popup(msg: str, title: str = "Sistema de Inversores") -> None:
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.user32.MessageBoxW(0, msg, title, 0x40)  # MB_ICONINFORMATION
         except Exception:
             pass
 
 
+def perform_auto_update(remote_ver: str) -> bool:
+    """Descarga el código actualizado de GitHub y reemplaza los archivos preservando configuraciones."""
+    try:
+        logger.info(f"[AutoUpdate] Descargando actualización v{remote_ver} desde GitHub...")
+        req = urllib.request.Request(GITHUB_ZIP_URL, headers={"User-Agent": "Voltguard-AutoUpdate/2.0"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            zip_bytes = resp.read()
+
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        
+        # Encontrar la carpeta raíz dentro del zip (ej: Inversores-main/)
+        prefix = ""
+        for name in zf.namelist():
+            if name.endswith("/") and name.count("/") == 1:
+                prefix = name
+                break
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="voltguard_update_"))
+        zf.extractall(temp_dir)
+        source_dir = temp_dir / prefix.rstrip("/") if prefix else temp_dir
+
+        # Sobrescribir archivos manteniendo los protegidos
+        for root, dirs, files in os.walk(source_dir):
+            rel_path = Path(root).relative_to(source_dir)
+            target_dir = BASE_DIR / rel_path
+
+            # Ignorar si es parte de una ruta protegida
+            parts = rel_path.parts
+            if parts and (parts[0] in PROTECTED_PATHS or parts[0].endswith(".sqlite")):
+                continue
+
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            for file in files:
+                if file in PROTECTED_PATHS or file.endswith(".sqlite") or file == ".env":
+                    continue
+                src_file = Path(root) / file
+                dst_file = target_dir / file
+                shutil.copy2(src_file, dst_file)
+
+        # Limpiar directorio temporal
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+        logger.info(f"[AutoUpdate] Sistema actualizado exitosamente a v{remote_ver}")
+        _show_info_popup(
+            f"¡Sistema Actualizado con Éxito a la versión v{remote_ver}!\n\n"
+            f"Tus configuraciones (.env) y datos locales se han mantenido intactos.\n"
+            f"El sistema continuará iniciándose normalmente.",
+            "Actualización Completada"
+        )
+        return True
+    except Exception as exc:
+        logger.error(f"[AutoUpdate] Error al actualizar: {exc}")
+        _show_info_popup(
+            f"No se pudo completar la auto-actualización: {exc}\n\n"
+            f"El sistema continuará ejecutándose con la versión actual.",
+            "Error de Actualización"
+        )
+        return False
+
+
 def check_for_updates() -> bool:
     """Verifica si existe una nueva versión en GitHub.
-    Si la versión local está desactualizada, muestra el Pop-Up emergente.
-    Retorna True si hay actualización disponible, False de lo contrario.
+    Si la versión local está desactualizada, ofrece auto-actualización de 1-Clic.
     """
     local_ver = get_local_version()
     try:
@@ -69,8 +155,9 @@ def check_for_updates() -> bool:
             
             if _parse_version(remote_ver) > _parse_version(local_ver):
                 logger.warning(f"[Update] Nueva versión disponible: v{remote_ver} (Actual: v{local_ver})")
-                _show_update_popup(local_ver, remote_ver, data.get("notes", ""))
-                return True
+                should_update = _ask_update_confirmation(local_ver, remote_ver, data.get("notes", ""))
+                if should_update:
+                    return perform_auto_update(remote_ver)
     except Exception as exc:
         logger.debug(f"[Update] No se pudo verificar versión remota: {exc}")
 
