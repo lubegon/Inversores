@@ -269,9 +269,9 @@ def _dump_debug(page: Page, run_dir: Path, prefix: str) -> None:
         pass
 
 
-def _login_if_needed(page: Page, user: str, password: str) -> None:
+def _login_if_needed(page: Page, user: str, password: str, storage_state_path: Path | None = None) -> None:
     try:
-        if page.locator("#plant_tree").is_visible():
+        if page.locator("#plant_tree").count() > 0 or "main.html" in (page.url or ""):
             return
     except Exception:
         pass
@@ -283,7 +283,7 @@ def _login_if_needed(page: Page, user: str, password: str) -> None:
     try:
         usr_loc.wait_for(state="visible", timeout=3_000)
     except Exception:
-        if page.locator("#plant_tree").is_visible():
+        if page.locator("#plant_tree").count() > 0 or "main.html" in (page.url or ""):
             return
         return
 
@@ -294,9 +294,21 @@ def _login_if_needed(page: Page, user: str, password: str) -> None:
             if btn_loc.is_visible():
                 btn_loc.click()
 
-            page.wait_for_selector("#plant_tree", timeout=60_000)
+            try:
+                page.wait_for_url("**/main.html*", timeout=30_000)
+            except Exception:
+                pass
+
+            page.wait_for_selector("#plant_tree", state="attached", timeout=60_000)
+            page.wait_for_timeout(500)
+
+            if storage_state_path:
+                try:
+                    page.context.storage_state(path=str(storage_state_path))
+                except Exception:
+                    pass
     except Exception as e:
-        if page.locator("#plant_tree").is_visible():
+        if page.locator("#plant_tree").count() > 0 or "main.html" in (page.url or ""):
             return
         raise e
 
@@ -822,14 +834,14 @@ def main() -> None:
             try:
                 page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=nav_timeout_ms)
                 page.wait_for_timeout(300)
-                _login_if_needed(page, user=user, password=password)
+                _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
 
                 for idx, plant in enumerate(plants, start=1):
                     print(f"[{idx}/{len(plants)}] Plant {plant.plant_id}...", flush=True)
 
                     plant_name: str | None = None
                     try:
-                        _login_if_needed(page, user=user, password=password)
+                        _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
 
                         page.wait_for_timeout(200)
                         plant_name, tree = _select_plant_and_load_tree(
