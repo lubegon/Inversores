@@ -250,7 +250,3 @@ def save_telemetry_reading(*args, **kwargs) -> bool:
 
 def save_plant_event(*args, **kwargs) -> bool:
     return SupabaseManager.get_instance().save_plant_event(*args, **kwargs)
-<<<<<<< HEAD
-=======
-
->>>>>>> 4f3ebe3 (fix: exportar funciones auxiliares save_plant/save_device/save_telemetry_reading en supabase_client)
