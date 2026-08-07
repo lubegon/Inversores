@@ -1,5 +1,5 @@
 {
-  "version": "2.1.6",
+  "version": "2.1.7",
   "release_date": "2026-08-07",
-  "notes": "Corrección de sintaxis y limpieza total de marcadores de versión en ShineMonitor."
+  "notes": "Exportación limpia de funciones auxiliares en supabase_client y verificación del motor ShineMonitor."
 }
