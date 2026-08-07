@@ -1,5 +1,5 @@
 {
-  "version": "2.2.2",
+  "version": "2.2.3",
   "release_date": "2026-08-07",
-  "notes": "Soporte multi-selector (#mypassword) en el formulario de inicio de sesión de ShineMonitor."
+  "notes": "Redirección limpia de main.html, espera por state=attached y guardado de cookies de sesión en ShineMonitor."
 }
