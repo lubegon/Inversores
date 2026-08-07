@@ -269,10 +269,10 @@ def _dump_debug(page: Page, run_dir: Path, prefix: str) -> None:
         pass
 
 
-def _login_if_needed(page: Page, user: str, passw: str) -> None:
+def _login_if_needed(page: Page, user: str, password: str) -> None:
     if page.locator("#loginusr > input").is_visible():
         page.fill("#loginusr > input", user)
-        page.fill("#loginpwd > input", passw)
+        page.fill("#loginpwd > input", password)
 
         with page.expect_navigation(timeout=60_000):
             page.click("#loginsub")

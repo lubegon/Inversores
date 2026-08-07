@@ -5,7 +5,7 @@ rem Desactivar verificacion estricta SSL en Python para evitar bloqueos en Windo
 set PYTHONHTTPSVERIFY=0
 title Iniciar Servidor - Captura de Inversores
 echo ======================================================================
-echo       INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES (v2.1.9)
+echo       INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES (v2.2.0)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.
@@ -160,7 +160,7 @@ rem 6. Verificar si existe una nueva version en GitHub
 rem 7. Iniciar Servidor
 cls
 echo ======================================================================
-echo       SISTEMA DE CAPTURA DE INVERSORES (v2.1.9)
+echo       SISTEMA DE CAPTURA DE INVERSORES (v2.2.0)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.

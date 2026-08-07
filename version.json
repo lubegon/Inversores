@@ -1,5 +1,5 @@
 {
-  "version": "2.1.9",
+  "version": "2.2.0",
   "release_date": "2026-08-07",
-  "notes": "Registro centralizado de eventos de auto-actualizaciones y errores en Supabase."
+  "notes": "Corrección de parámetro de inicio de sesión _login_if_needed en ShineMonitor."
 }
