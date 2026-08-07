@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "2.1.1",
   "release_date": "2026-08-07",
-  "notes": "Sistema de Auto-Actualización Automática de 1-Clic integrado (preserva .env y datos locales)."
+  "notes": "Optimización masiva de velocidad en ShineMonitor (reducción de delais fijos y timeouts ágiles)."
 }

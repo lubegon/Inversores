@@ -1,626 +1,58 @@
-"""Scraper de voltaje/lecturas desde ShineMonitor.
-
-Este módulo contiene la implementación principal de scraping para ShineMonitor:
-- Carga plantas desde `storage/shinemonitor-plants.json`.
-- Para cada planta: navega a Device Management, expande el árbol (Inverter -> monitores).
-- Abre *Data Details* y lee la última fila disponible.
-- Persiste resultados en SQLite (`Voltage  Shinemonitor.sqlite`) y guarda artifacts en `storage/scrape/`.
-
-El script raíz `shinemonitor_scrape_voltage.py` se mantiene como wrapper para
-compatibilidad (no mezclar proveedores en la raíz).
-"""
-
 from __future__ import annotations
 
 import json
 import os
 import re
 import sqlite3
-import hashlib
-import unicodedata
+import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 from dotenv import load_dotenv
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import Locator, sync_playwright
+from playwright.sync_api import Locator, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
-SHINE_URL = "https://shinemonitor.com/index_en.html?1770834820036"
+from providers.supabase_client import save_device, save_plant, save_telemetry_reading
 
-# Navigation selectors
-SELECTOR_PLANTS_TOGGLE = "#headPlos > div.logo-container > div > a"
-SELECTOR_PLANTS_LIST = "#plantlist > ul"
-SELECTOR_DEVICE_MGMT_TAB = "#plantTab > li:nth-child(4) > a"  # Device Management
-SELECTOR_TREE_BOX = "#treeLeftBox"  # árbol (Inverter, monitores, etc.)
-SELECTOR_DATA_DETAILS_TAB = "#inverterpab > li:nth-child(5) > a"  # Data Details
-
-# Data selectors
-SELECTOR_INV_DETAIL_CONTAINER = "#invDetailCon"
-SELECTOR_INV_DETAIL_CUE = "#invDetailCue"  # texto "Sorry,YYYY-MM-DD ..."
-
-
-COLUMNS = [
-    "Timestamp",
-    "Battery Voltage(V)",
-    "PV Voltage(V)",
-    "Inverter Voltage(V)",
-    "Batt Current(A)",
-    "Charger Current(A)",
-    "Charger Power(W)",
-    "PLoad(W)",
-    "PGrid(W)",
-    "work state",
-    "rated power(W)",
-    "Grid Voltage(V)",
-    "PInverter(W)",
-    "Accumulated Sell Power(kWh)",
-    "Accumulated Load Power(kWh)",
-    "Accumulated Self_Use Power(kWh)",
-    "charger work enable",
-    "Accumulated PV Power(kWh)",
-]
+SHINE_URL = "http://www.shinemonitor.com/"
+MAX_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
 class PlantRef:
     plant_id: str
-    name: str | None
+    name: str | None = None
 
 
-def _env_flag(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
+def _env_flag(name: str, default: bool = False) -> bool:
+    val = (os.getenv(name) or "").strip().lower()
+    if not val:
         return default
-    return str(value).strip().lower() not in {"0", "false", "no", "off"}
+    return val in {"1", "true", "yes", "y", "on"}
 
 
 def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None:
+    val = (os.getenv(name) or "").strip()
+    if not val:
         return default
     try:
-        return int(str(raw).strip().replace("_", ""))
-    except Exception:
+        return int(val)
+    except ValueError:
         return default
-
-
-def _browser_choice() -> str:
-    return (os.getenv("BROWSER") or "chromium").strip().lower()
-
-
-def _launch_browser(p, headless: bool):
-    choice = _browser_choice()
-    use_edge = choice in {"edge", "msedge"}
-
-    try:
-        if use_edge:
-            return p.chromium.launch(headless=headless, channel="msedge")
-        return p.chromium.launch(headless=headless)
-    except PlaywrightError:
-        if use_edge:
-            return p.chromium.launch(headless=headless)
-        raise
-
-
-def _login_if_needed(page, user: str, password: str) -> None:
-    if page.locator("#loginusr > input").is_visible():
-        page.locator("#loginusr > input").fill(user)
-        page.locator("#mypassword").fill(password)
-        page.locator("#loginbtn").click()
-        try:
-            page.wait_for_load_state("networkidle", timeout=60_000)
-        except Exception:
-            pass
-        page.wait_for_timeout(1500)
-
-
-def _open_plants_dropdown(page) -> None:
-    toggle = page.locator(SELECTOR_PLANTS_TOGGLE)
-    toggle.wait_for(state="attached", timeout=30_000)
-
-    for attempt in range(1, 4):
-        try:
-            toggle.hover(timeout=5_000)
-        except Exception:
-            pass
-
-        try:
-            toggle.click(timeout=10_000)
-        except Exception:
-            toggle.click(timeout=10_000, force=True)
-
-        try:
-            page.wait_for_selector("#plantlist", state="visible", timeout=10_000)
-            break
-        except Exception:
-            if attempt == 3:
-                raise
-
-    page.wait_for_selector(SELECTOR_PLANTS_LIST, state="attached", timeout=30_000)
-    page.wait_for_timeout(200)
-
-
-def _select_plant(page, plant_id: str) -> str | None:
-    _open_plants_dropdown(page)
-
-    plant_anchor = page.locator(f"xpath=//*[@id='plant_{plant_id}']/a")
-    plant_anchor.wait_for(state="visible", timeout=30_000)
-
-    plant_name = " ".join(plant_anchor.inner_text().split()).strip() or None
-
-    plant_anchor.click()
-    try:
-        page.wait_for_load_state("networkidle", timeout=30_000)
-    except Exception:
-        pass
-
-    page.wait_for_timeout(1200)
-    return plant_name
-
-
-def _click_device_management(page) -> None:
-    tab = page.locator(SELECTOR_DEVICE_MGMT_TAB)
-    tab.wait_for(state="visible", timeout=30_000)
-    tab.click()
-    try:
-        page.wait_for_load_state("networkidle", timeout=30_000)
-    except Exception:
-        pass
-
-    page.wait_for_selector(SELECTOR_TREE_BOX, state="visible", timeout=30_000)
-    page.wait_for_timeout(600)
-
-
-def _dump_debug(page, run_dir: Path, name: str) -> None:
-    try:
-        run_dir.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-
-
-def _tree_is_empty(tree: Locator) -> bool:
-    try:
-        # "Vacío" = no hay nodos/anchors renderizados (suele pasar si el click/selección no pegó)
-        if tree.locator("a.jstree-anchor").count() > 0:
-            return False
-        if tree.locator("li").count() > 0:
-            return False
-        # Algunos layouts muestran el contenedor pero sin children aún.
-        txt = (tree.inner_text() or "").strip()
-        return not bool(txt)
-    except Exception:
-        return False
-
-
-def _select_plant_and_load_tree(
-    page,
-    *,
-    plant: PlantRef,
-    run_dir: Path,
-    timeout_ms: int = 30_000,
-    retries: int = 1,
-) -> tuple[str | None, Locator]:
-    """Selecciona planta -> Device Management -> árbol visible.
-
-    Reintenta SOLO si el árbol no carga (timeout) o queda vacío.
-    """
-
-    last_exc: Exception | None = None
-    plant_name: str | None = None
-
-    for attempt in range(1, max(0, retries) + 2):
-        try:
-            plant_name = _select_plant(page, plant_id=plant.plant_id) or plant.name
-
-            page.screenshot(
-                path=str(run_dir / f"{plant.plant_id}-01-selected-a{attempt}.png"),
-                full_page=True,
-            )
-
-            _click_device_management(page)
-
-            tree = _ensure_tree_loaded(
-                page,
-                timeout_ms=timeout_ms,
-                retries=2,
-                run_dir=run_dir,
-                debug_name=f"{plant.plant_id}-tree-timeout-a{attempt}",
-            )
-            if _tree_is_empty(tree):
-                raise RuntimeError("TREE_EMPTY")
-
-            return plant_name, tree
-        except Exception as e:
-            last_exc = e
-            is_retryable = isinstance(e, PlaywrightTimeoutError) or (str(e).strip() == "TREE_EMPTY")
-            if attempt >= max(0, retries) + 1 or not is_retryable:
-                raise
-
-            try:
-                print(
-                    f"  [RETRY] Plant {plant.plant_id}: reintentando selección/árbol (attempt {attempt+1})",
-                    flush=True,
-                )
-            except Exception:
-                pass
-            _dump_debug(page, run_dir, f"{plant.plant_id}-tree-retry-a{attempt}")
-            try:
-                page.wait_for_timeout(800)
-            except Exception:
-                pass
-
-    # No debería llegar acá.
-    raise last_exc or RuntimeError("No se pudo seleccionar planta/cargar árbol")
-
-    try:
-        (run_dir / f"{name}.url.txt").write_text(page.url or "", encoding="utf-8")
-    except Exception:
-        pass
-
-    try:
-        (run_dir / f"{name}.html").write_text(page.content(), encoding="utf-8")
-    except Exception:
-        pass
-
-    try:
-        page.screenshot(path=str(run_dir / f"{name}.png"), full_page=True)
-    except Exception:
-        pass
-
-
-def _ensure_tree_loaded(
-    page,
-    *,
-    timeout_ms: int = 30_000,
-    retries: int = 2,
-    run_dir: Path | None = None,
-    debug_name: str = "tree-not-visible",
-) -> Locator:
-    # Selector principal + fallbacks (por si el sitio cambia IDs/clases)
-    selectors = [
-        SELECTOR_TREE_BOX,
-        "#treeBox",
-        "#treeLeft",
-        "div#treeLeftBox",
-        "div#treeBox",
-    ]
-
-    last_exc: Exception | None = None
-    for attempt in range(1, max(1, retries) + 2):
-        for sel in selectors:
-            try:
-                tree = page.locator(sel)
-                tree.wait_for(state="visible", timeout=timeout_ms)
-                return tree
-            except Exception as e:
-                last_exc = e
-
-        # Best-effort: si el árbol no aparece, quizá no quedó en el tab correcto.
-        try:
-            _click_device_management(page)
-        except Exception:
-            pass
-        try:
-            page.wait_for_timeout(500)
-        except Exception:
-            pass
-
-        if attempt == max(1, retries) + 1 and run_dir is not None:
-            _dump_debug(page, run_dir, debug_name)
-
-    raise PlaywrightTimeoutError(
-        f"No se pudo cargar el árbol (selectors={selectors}). Último error: {last_exc}"
-    )
-
-
-def _open_node_if_needed(node_li: Locator) -> None:
-    klass = (node_li.get_attribute("class") or "").lower()
-    if "jstree-open" in klass:
-        return
-
-    ocl = node_li.locator("xpath=./i[contains(@class,'jstree-ocl')]")
-    if ocl.count() > 0:
-        ocl.first.click()
-        node_li.page.wait_for_timeout(300)
-
-
-def _expand_tree(tree: Locator, *, rounds: int = 3, max_nodes_per_round: int = 50) -> None:
-    # Algunos árboles no renderizan los nodos hijos hasta abrirlos.
-    # Abrimos nodos cerrados para que aparezcan todos los "Inverter" (en plantas con 2+ dataloggers).
-    for _ in range(max(1, rounds)):
-        closed = tree.locator("li.jstree-closed")
-        count = closed.count()
-        if count == 0:
-            return
-        for i in range(min(count, max_nodes_per_round)):
-            _open_node_if_needed(closed.nth(i))
-
-
-def _collect_inverters_and_device_anchors(tree: Locator) -> tuple[int, list[Locator]]:
-    # Puede haber múltiples nodos "Inverter" (uno por datalogger). Unimos todos los monitores.
-    _expand_tree(tree)
-
-    inverter_anchors = tree.locator("a.jstree-anchor", has_text="Inverter")
-    inv_count = inverter_anchors.count()
-    if inv_count == 0:
-        return 0, []
-
-    results: list[Locator] = []
-    seen: set[str] = set()
-    for i in range(inv_count):
-        inverter_li = inverter_anchors.nth(i).locator("xpath=ancestor::li[1]")
-        _open_node_if_needed(inverter_li)
-        for a in _collect_device_anchors_under(inverter_li):
-            key = (a.get_attribute("id") or "").strip()
-            if not key:
-                key = "name:" + (" ".join((a.inner_text() or "").split()).strip() or "unknown")
-            if key in seen:
-                continue
-            seen.add(key)
-            results.append(a)
-
-    return inv_count, results
-
-
-def _collect_device_anchors_under(li: Locator) -> list[Locator]:
-    anchors = li.locator("xpath=.//ul//a[contains(@class,'jstree-anchor')]")
-    results: list[Locator] = []
-    for i in range(anchors.count()):
-        a = anchors.nth(i)
-        text = " ".join(a.inner_text().split()).strip()
-        if not text:
-            continue
-        if text.lower() == "inverter":
-            continue
-        results.append(a)
-    return results
-
-
-def _click_data_details(
-    page,
-    *,
-    timeout_ms: int = 30_000,
-    run_dir: Path | None = None,
-    debug_name: str = "no-data-details-tab",
-) -> bool:
-    """Intenta abrir la pestaña "Data Details".
-
-    En algunas plantas/equipos el layout cambia y la pestaña puede no existir.
-    En ese caso devolvemos False (y opcionalmente dumpeamos artifacts) para que
-    el caller pueda continuar sin abortar toda la corrida.
-    """
-
-    label = re.compile(r"Data\s*Details", re.IGNORECASE)
-    candidates: list[Locator] = [
-        page.locator(SELECTOR_DATA_DETAILS_TAB),
-        page.locator("#inverterpab a", has_text=label),
-        page.locator("a", has_text=label),
-    ]
-
-    last_exc: Exception | None = None
-    per_try_timeout = max(3_000, int(timeout_ms / 3))
-    for _ in range(3):
-        for cand in candidates:
-            try:
-                if cand.count() == 0:
-                    continue
-                tab = cand.first
-                tab.wait_for(state="visible", timeout=per_try_timeout)
-                try:
-                    tab.scroll_into_view_if_needed(timeout=2_000)
-                except Exception:
-                    pass
-
-                try:
-                    tab.click(timeout=5_000)
-                except Exception:
-                    tab.click(timeout=5_000, force=True)
-
-                try:
-                    page.wait_for_load_state("networkidle", timeout=10_000)
-                except Exception:
-                    pass
-                page.wait_for_timeout(700)
-                return True
-            except Exception as e:
-                last_exc = e
-
-        try:
-            page.wait_for_timeout(500)
-        except Exception:
-            pass
-
-    if run_dir is not None:
-        _dump_debug(page, run_dir, debug_name)
-    return False
-
-
-def _find_device_anchor(
-    anchors: list[Locator], *, device_key: str, device_name: str
-) -> Locator | None:
-    # Preferimos match por id estable
-    for a in anchors:
-        try:
-            if _device_key(a) == device_key:
-                return a
-        except Exception:
-            continue
-
-    # Fallback por nombre visible (menos estable)
-    dn = (device_name or "").strip().lower()
-    if dn:
-        for a in anchors:
-            try:
-                txt = " ".join((a.inner_text() or "").split()).strip().lower()
-            except Exception:
-                txt = ""
-            if txt and txt == dn:
-                return a
-    return None
-
-
-def _extract_no_data_message(page) -> tuple[str | None, str | None]:
-    cue = page.locator(SELECTOR_INV_DETAIL_CUE)
-    if cue.count() == 0:
-        return None, None
-
-    try:
-        if not cue.is_visible():
-            return None, None
-    except Exception:
-        return None, None
-
-    text = " ".join((cue.inner_text() or "").split()).strip()
-    if not text:
-        return "NO_DATA", ""
-
-    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", text)
-    if date_match:
-        return "NO_DATA", date_match.group(1)
-
-    return "NO_DATA", text
-
-
-def _extract_latest_row(page, *, timeout_ms: int = 10_000) -> dict[str, str] | None:
-    container = page.locator(SELECTOR_INV_DETAIL_CONTAINER)
-    if container.count() == 0:
-        return None
-
-    # esperar a que exista una tabla (si hay datos)
-    try:
-        container.wait_for(state="visible", timeout=timeout_ms)
-    except Exception:
-        return None
-
-    # Primera fila del tbody dentro del contenedor
-    row = container.locator("table tbody tr").first
-    try:
-        # En cargas lentas, el contenedor aparece antes que las filas.
-        row.wait_for(state="visible", timeout=timeout_ms)
-    except Exception:
-        if row.count() == 0:
-            return None
-
-    cells = row.locator("td")
-    if cells.count() == 0:
-        return None
-
-    values: list[str] = []
-    for i in range(cells.count()):
-        values.append(" ".join((cells.nth(i).inner_text() or "").split()).strip())
-
-    # Mapear por posición a las columnas esperadas (si hay menos celdas, se rellena)
-    mapped: dict[str, str] = {}
-    for idx, col in enumerate(COLUMNS):
-        mapped[col] = values[idx] if idx < len(values) else ""
-
-    return mapped
-
-
-def _safe_identifier(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value)
-    value = "".join(ch for ch in value if not unicodedata.combining(ch))
-    value = value.strip()
-    value = re.sub(r"\s+", "_", value)
-    value = re.sub(r"[^a-zA-Z0-9_]+", "_", value)
-    value = re.sub(r"_+", "_", value).strip("_")
-    return value or "x"
-
-
-def _device_key(anchor: Locator) -> str:
-    # Preferimos un ID estable si existe (ej: DEV$#B142..._anchor)
-    raw = (anchor.get_attribute("id") or "").strip()
-    if raw:
-        return raw
-    # Fallback: nombre visible (menos estable)
-    return "name:" + (" ".join((anchor.inner_text() or "").split()).strip() or "unknown")
-
-
-def _device_internal_table(plant_id: str, device_key: str) -> str:
-    # Tabla interna estable por device_key (usada solo como fallback/diagnóstico).
-    digest = hashlib.sha1(device_key.encode("utf-8")).hexdigest()[:10]
-    return f"device_{plant_id}_{digest}"
 
 
 def _db_path(base_dir: Path) -> Path:
-    # "Voltage  Shinemonitor" pedido por el usuario (nombre del archivo)
-    # Usamos extensión sqlite para claridad.
-    return base_dir / "Voltage  Shinemonitor.sqlite"
+    storage_dir = base_dir / "storage"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    return storage_dir / "shinemonitor.sqlite"
 
 
-def _ensure_meta_tables(conn: sqlite3.Connection) -> None:
-        conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS meta_plants (
-                    plant_id TEXT PRIMARY KEY,
-                    plant_name TEXT,
-                    last_seen_at TEXT NOT NULL
-                )
-                """
-        )
-
-        conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS meta_devices (
-                    device_key TEXT PRIMARY KEY,
-                    plant_id TEXT NOT NULL,
-                    device_name TEXT,
-                    table_name TEXT NOT NULL,
-                    last_seen_at TEXT NOT NULL
-                )
-                """
-        )
-
-        conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS plant_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    captured_at TEXT NOT NULL,
-                    plant_id TEXT NOT NULL,
-                    plant_name TEXT,
-                    status TEXT NOT NULL,
-                    status_detail TEXT
-                )
-                """
-        )
-
-
-def _ensure_device_table(conn: sqlite3.Connection, table: str) -> None:
-        # Una tabla por dispositivo (monitor) bajo Inverter
-    cols_sql = ",\n      ".join([f'"{c}" TEXT' for c in COLUMNS])
-
-    conn.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS "{table}" (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          captured_at TEXT NOT NULL,
-          plant_id TEXT NOT NULL,
-          plant_name TEXT,
-          device_name TEXT,
-                    device_key TEXT,
-          status TEXT NOT NULL,
-          status_detail TEXT,
-          {cols_sql}
-        )
-        """
-    )
-
-
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (table,)
-    ).fetchone()
-    return row is not None
-
-
-def _get_device_table(conn: sqlite3.Connection, device_key: str) -> str | None:
-    row = conn.execute(
-        "SELECT table_name FROM meta_devices WHERE device_key=?", (device_key,)
-    ).fetchone()
-    return str(row[0]) if row else None
+def _sanitize_name(name: str) -> str:
+    cleaned = re.sub(r"[^\w\s-]", "", name, flags=re.UNICODE).strip()
+    cleaned = re.sub(r"[\s-]+", "_", cleaned)
+    return cleaned or "unnamed"
 
 
 def _claim_friendly_table_name(
@@ -630,51 +62,141 @@ def _claim_friendly_table_name(
     device_key: str,
     plant_id: str,
 ) -> str:
-    # Evita colisiones: si el nombre existe y pertenece al mismo device_key -> ok.
-    # Si existe pero no sabemos a quién pertenece, agregamos sufijo.
-    # Nota: el usuario pidió "sin ID"; solo agregamos sufijo si es estrictamente necesario.
-    name = desired
-    for attempt in range(1, 50):
-        if not _table_exists(conn, name):
-            return name
+    """Evita colisiones de nombres amigables de tablas entre distintos device_key."""
+    existing = _get_device_table(conn, device_key)
+    if existing:
+        return existing
 
+    base = _sanitize_name(desired)
+    candidate = base
+    counter = 2
+    while True:
         row = conn.execute(
-            "SELECT device_key FROM meta_devices WHERE table_name=? LIMIT 1", (name,)
+            "SELECT device_key FROM meta_devices WHERE table_name = ?",
+            (candidate,),
         ).fetchone()
-        if row and str(row[0]) == device_key:
-            return name
 
-        suffix = f"_{attempt}"
-        name = (desired + suffix)[:200]
+        if not row:
+            return candidate
 
-    # último recurso: usar tabla interna estable
-    return _device_internal_table(plant_id, device_key)
+        if row[0] == device_key:
+            return candidate
 
-
-def _desired_table_name(plant_name: str | None, device_name: str, device_count: int) -> str:
-    plant_part = _safe_identifier(plant_name or "plant")
-    if device_count <= 1:
-        return plant_part
-    dev_part = _safe_identifier(device_name or "device")
-    return f"{plant_part}_{dev_part}"
+        candidate = f"{base}_{counter}"
+        counter += 1
 
 
-def _upsert_meta_plant(conn: sqlite3.Connection, plant_id: str, plant_name: str | None, now: str) -> None:
+def _desired_table_name(
+    plant_name: str | None,
+    device_name: str,
+    device_count_in_plant: int,
+) -> str:
+    """Genera el nombre sugerido para la tabla.
+
+    - Si la planta tiene 1 solo monitor: usar el nombre de la planta (ej: 'Planta_San_Jose').
+    - Si tiene varios: 'Planta_San_Jose_Inverter_1'.
+    - Si no hay nombre de planta: usar el nombre del dispositivo.
+    """
+    if plant_name:
+        p_clean = _sanitize_name(plant_name)
+        if device_count_in_plant <= 1:
+            return p_clean
+        d_clean = _sanitize_name(device_name)
+        return f"{p_clean}_{d_clean}"
+    return _sanitize_name(device_name)
+
+
+def _ensure_meta_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
-        INSERT INTO meta_plants (plant_id, plant_name, last_seen_at)
+        CREATE TABLE IF NOT EXISTS meta_plants (
+            plant_id TEXT PRIMARY KEY,
+            plant_name TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS meta_devices (
+            device_key TEXT PRIMARY KEY,
+            plant_id TEXT NOT NULL,
+            device_name TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plant_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            captured_at TEXT NOT NULL,
+            plant_id TEXT NOT NULL,
+            plant_name TEXT,
+            status TEXT NOT NULL,
+            status_detail TEXT
+        )
+        """
+    )
+
+
+def _ensure_device_table(conn: sqlite3.Connection, table_name: str) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS "{table_name}" (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            captured_at TEXT NOT NULL,
+            plant_id TEXT NOT NULL,
+            plant_name TEXT,
+            device_key TEXT NOT NULL,
+            device_name TEXT NOT NULL,
+            update_time TEXT,
+            r_voltage REAL,
+            s_voltage REAL,
+            t_voltage REAL,
+            rs_voltage REAL,
+            st_voltage REAL,
+            tr_voltage REAL,
+            raw_data TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _get_device_table(conn: sqlite3.Connection, device_key: str) -> str | None:
+    row = conn.execute(
+        "SELECT table_name FROM meta_devices WHERE device_key = ?",
+        (device_key,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _upsert_meta_plant(
+    conn: sqlite3.Connection,
+    plant_id: str,
+    plant_name: str | None,
+    now: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO meta_plants (plant_id, plant_name, updated_at)
         VALUES (?, ?, ?)
         ON CONFLICT(plant_id) DO UPDATE SET
-          plant_name=excluded.plant_name,
-          last_seen_at=excluded.last_seen_at
+            plant_name = excluded.plant_name,
+            updated_at = excluded.updated_at
         """,
         (plant_id, plant_name, now),
     )
-    try:
-        from providers.supabase_client import get_supabase
-        get_supabase().save_plant("shinemonitor", plant_id, plant_name or "")
-    except Exception:
-        pass
+    save_plant(plant_id, plant_name, "shinemonitor", metadata={"updated_at": now})
 
 
 def _upsert_meta_device(
@@ -682,92 +204,29 @@ def _upsert_meta_device(
     *,
     device_key: str,
     plant_id: str,
-    device_name: str | None,
+    device_name: str,
     table_name: str,
     now: str,
 ) -> None:
     conn.execute(
         """
-        INSERT INTO meta_devices (device_key, plant_id, device_name, table_name, last_seen_at)
+        INSERT INTO meta_devices (device_key, plant_id, device_name, table_name, updated_at)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(device_key) DO UPDATE SET
-          plant_id=excluded.plant_id,
-          device_name=excluded.device_name,
-          table_name=excluded.table_name,
-          last_seen_at=excluded.last_seen_at
+            plant_id = excluded.plant_id,
+            device_name = excluded.device_name,
+            table_name = excluded.table_name,
+            updated_at = excluded.updated_at
         """,
         (device_key, plant_id, device_name, table_name, now),
     )
-    try:
-        from providers.supabase_client import get_supabase
-        get_supabase().save_device("shinemonitor", plant_id, device_key, device_name or "", metadata={"table_name": table_name})
-    except Exception:
-        pass
-
-
-def _insert_row(
-    conn: sqlite3.Connection,
-    table: str,
-    *,
-    captured_at: str,
-    plant_id: str,
-    plant_name: str | None,
-    device_name: str | None,
-    device_key: str | None,
-    status: str,
-    status_detail: str | None,
-    data: dict[str, str] | None,
-) -> None:
-    row: dict[str, Any] = {c: "" for c in COLUMNS}
-    if data:
-        row.update(data)
-
-    fields = [
-        "captured_at",
-        "plant_id",
-        "plant_name",
-        "device_name",
-        "device_key",
-        "status",
-        "status_detail",
-        *COLUMNS,
-    ]
-
-    values = [
-        captured_at,
-        plant_id,
-        plant_name,
-        device_name,
+    save_device(
         device_key,
-        status,
-        status_detail,
-        *[row[c] for c in COLUMNS],
-    ]
-
-    placeholders = ",".join(["?"] * len(fields))
-    quoted_fields = ",".join([f'"{f}"' for f in fields])
-
-    conn.execute(
-        f"INSERT INTO "
-        f'"{table}" ({quoted_fields}) VALUES ({placeholders})',
-        values,
+        plant_id,
+        device_name,
+        "shinemonitor",
+        metadata={"table_name": table_name, "updated_at": now},
     )
-    try:
-        from providers.supabase_client import get_supabase
-        sb = get_supabase()
-        if sb.is_enabled():
-            dev_k = device_key or table
-            update_t = (data or {}).get("Data Details Update Time", "") or (data or {}).get("update_time", "")
-            sb.save_telemetry_reading(
-                provider="shinemonitor",
-                device_key=dev_k,
-                update_time=update_t,
-                status=status,
-                metrics=data or {},
-                inserted_at=captured_at,
-            )
-    except Exception:
-        pass
 
 
 def _insert_plant_event(
@@ -777,7 +236,7 @@ def _insert_plant_event(
     plant_id: str,
     plant_name: str | None,
     status: str,
-    status_detail: str | None,
+    status_detail: str | None = None,
 ) -> None:
     conn.execute(
         """
@@ -786,13 +245,491 @@ def _insert_plant_event(
         """,
         (captured_at, plant_id, plant_name, status, status_detail),
     )
+
+
+def _launch_browser(p: Any, *, headless: bool) -> Any:
+    launch_args = ["--no-sandbox", "--disable-setuid-sandbox"]
+
+    # Soporte para ejecutar en Linux/Docker con Chromium del sistema
+    executable_path = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+    if executable_path and Path(executable_path).exists():
+        return p.chromium.launch(
+            headless=headless,
+            executable_path=executable_path,
+            args=launch_args,
+        )
+
+    # Buscar instalación local en carpeta del proyecto (Windows/portable)
+    project_root = Path(__file__).resolve().parents[2]
+    local_browsers = project_root / "playwright_browsers"
+    if local_browsers.exists():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(local_browsers)
+
+    return p.chromium.launch(headless=headless, args=launch_args)
+
+
+def _dump_debug(page: Page, run_dir: Path, prefix: str) -> None:
     try:
-        from providers.supabase_client import get_supabase
-        sb = get_supabase()
-        if sb.is_enabled():
-            sb.save_plant_event("shinemonitor", plant_id, status, status_detail or "", inserted_at=captured_at)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(run_dir / f"{prefix}.png"), full_page=True)
+        (run_dir / f"{prefix}.html").write_text(page.content(), encoding="utf-8")
     except Exception:
         pass
+
+
+def _login_if_needed(page: Page, user: str, passw: str) -> None:
+    if page.locator("#loginusr > input").is_visible():
+        page.fill("#loginusr > input", user)
+        page.fill("#loginpwd > input", passw)
+
+        with page.expect_navigation(timeout=60_000):
+            page.click("#loginsub")
+
+        page.wait_for_selector("#plant_tree", timeout=60_000)
+
+
+def _tree_is_empty(tree: Locator) -> bool:
+    try:
+        text = (tree.inner_text() or "").strip()
+        return not text
+    except Exception:
+        return True
+
+
+def _ensure_tree_loaded(
+    page: Page,
+    *,
+    timeout_ms: int = 60_000,
+    retries: int = 1,
+    run_dir: Path | None = None,
+    debug_name: str = "tree-load-error",
+) -> Locator:
+
+    tree = page.locator("#plant_tree")
+
+    for attempt in range(retries + 1):
+        try:
+            tree.wait_for(state="attached", timeout=timeout_ms)
+            page.wait_for_selector(
+                "#plant_tree li.jstree-node",
+                state="attached",
+                timeout=timeout_ms,
+            )
+            if not _tree_is_empty(tree):
+                return tree
+        except Exception:
+            pass
+
+        if attempt < retries:
+            page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
+            page.wait_for_selector("#plant_tree", timeout=timeout_ms)
+
+    if run_dir:
+        _dump_debug(page, run_dir, debug_name)
+
+    raise PlaywrightTimeoutError(
+        f"El árbol #plant_tree no cargó elementos tras {retries+1} intentos"
+    )
+
+
+def _select_plant_and_load_tree(
+    page: Page,
+    *,
+    plant: PlantRef,
+    run_dir: Path,
+    timeout_ms: int = 60_000,
+    retries: int = 1,
+) -> tuple[str | None, Locator]:
+
+    dropdown = page.locator("span.k-dropdown-wrap").first
+    dropdown.wait_for(state="visible", timeout=timeout_ms)
+    dropdown.click()
+
+    item_selector = f"#plant_select_listbox li[data-val='{plant.plant_id}']"
+    item = page.locator(item_selector).first
+
+    if not item.is_visible():
+
+        def search_scroll() -> bool:
+            container = page.locator(
+                "#plant_select_listbox .k-list-scroller"
+            ).first
+            if not container.is_visible():
+                return False
+
+            for delta in (300, 600, 1000, 1500, 2000):
+                container.evaluate(
+                    f"(el, d) => el.scrollTop = d", delta
+                )
+                page.wait_for_timeout(200)
+                if item.is_visible():
+                    return True
+            return False
+
+        found = search_scroll()
+        if not found:
+            _dump_debug(page, run_dir, f"{plant.plant_id}-dropdown-item-not-visible")
+            raise RuntimeError(
+                f"No se encontró la plant_id {plant.plant_id} en el combo #plant_select_listbox"
+            )
+
+    plant_name = (item.inner_text() or "").strip() or None
+    item.click()
+
+    tree = _ensure_tree_loaded(
+        page,
+        timeout_ms=timeout_ms,
+        retries=retries,
+        run_dir=run_dir,
+        debug_name=f"{plant.plant_id}-tree-load-error",
+    )
+
+    return plant_name, tree
+
+
+def _collect_inverters_and_device_anchors(tree: Locator) -> tuple[int, list[Locator]]:
+
+    nodes = tree.locator("li.jstree-node")
+    count = nodes.count()
+
+    inverter_lis: list[Locator] = []
+
+    for i in range(count):
+        node = nodes.nth(i)
+        a = node.locator("> a.jstree-anchor").first
+        text = (a.inner_text() or "").strip()
+
+        if text.startswith("Inverter"):
+            inverter_lis.append(node)
+
+    inverter_count = len(inverter_lis)
+    if inverter_count == 0:
+        return 0, []
+
+    device_anchors: list[Locator] = []
+
+    for inv_li in inverter_lis:
+        icon = inv_li.locator("> i.jstree-icon.jstree-ocl").first
+        try:
+            is_open = inv_li.evaluate(
+                "el => el.classList.contains('jstree-open')"
+            )
+        except Exception:
+            is_open = False
+
+        if not is_open:
+            icon.click()
+            inv_li.page.wait_for_timeout(200)
+
+        children = inv_li.locator("ul.jstree-children > li.jstree-node > a.jstree-anchor")
+        c_count = children.count()
+
+        for c_idx in range(c_count):
+            device_anchors.append(children.nth(c_idx))
+
+    return inverter_count, device_anchors
+
+
+def _device_key(anchor: Locator) -> str:
+
+    try:
+        node_id = anchor.evaluate(
+            "el => el.closest('li.jstree-node')?.id || ''"
+        )
+    except Exception:
+        node_id = ""
+
+    text = " ".join((anchor.inner_text() or "").split()).strip()
+
+    if node_id and text:
+        return f"{node_id}__{text}"
+    if node_id:
+        return node_id
+    return text or "unknown_device"
+
+
+def _click_data_details(
+    page: Page,
+    *,
+    timeout_ms: int = 30_000,
+    run_dir: Path | None = None,
+    debug_name: str = "notab",
+) -> bool:
+
+    tab = page.locator("a.k-link:has-text('Data Details')").first
+    try:
+        tab.wait_for(state="visible", timeout=timeout_ms)
+        tab.click()
+        return True
+    except Exception:
+        if run_dir:
+            _dump_debug(page, run_dir, debug_name)
+        return False
+
+
+def _is_grid_stale(grid_el: Locator, last_signature: str | None) -> bool:
+
+    if not last_signature:
+        return False
+    try:
+        curr = (grid_el.inner_text() or "").strip()
+        return curr == last_signature
+    except Exception:
+        return False
+
+
+def _get_grid_signature(grid_el: Locator) -> str | None:
+
+    try:
+        t = (grid_el.inner_text() or "").strip()
+        return t if t else None
+    except Exception:
+        return None
+
+
+def _find_kendo_grid(page: Page) -> Locator | None:
+
+    candidates = [
+        "div.k-grid:has(table.k-printable)",
+        "div.k-grid:has(th:has-text('Update Time'))",
+        "div.k-grid:has(th:has-text('Voltage'))",
+        "div.k-grid",
+    ]
+
+    for sel in candidates:
+        loc = page.locator(sel).first
+        if loc.is_visible():
+            return loc
+    return None
+
+
+def _click_grid_refresh_button(page: Page) -> bool:
+
+    btn_selectors = [
+        "a.k-pager-refresh",
+        "a.k-button-icontext:has-text('Refresh')",
+        "button:has-text('Refresh')",
+        ".k-pager-wrap a[title*='Refresh']",
+    ]
+
+    for sel in btn_selectors:
+        loc = page.locator(sel).first
+        if loc.is_visible():
+            loc.click()
+            return True
+    return False
+
+
+def _ensure_grid_data(
+    page: Page,
+    *,
+    timeout_ms: int = 30_000,
+    attempts: int = MAX_ATTEMPTS,
+    last_signature: str | None = None,
+) -> tuple[Locator, list[str]]:
+
+    grid = _find_kendo_grid(page)
+    if not grid:
+        page.wait_for_selector("div.k-grid", timeout=timeout_ms)
+        grid = _find_kendo_grid(page)
+
+    if not grid:
+        raise RuntimeError("No se encontró ningún div.k-grid visible")
+
+    rows_loc = grid.locator("tbody > tr")
+
+    for attempt in range(1, attempts + 1):
+        try:
+
+            rows_loc.first.wait_for(state="visible", timeout=timeout_ms)
+
+            stale = _is_grid_stale(grid, last_signature)
+
+            rows_count = rows_loc.count()
+            if rows_count > 0 and not stale:
+
+                headers = [
+                    (th.inner_text() or "").strip()
+                    for th in grid.locator("thead th").all()
+                ]
+
+                if any(h for h in headers):
+                    return grid, headers
+
+        except Exception:
+            pass
+
+        refreshed = _click_grid_refresh_button(page)
+
+        page.wait_for_timeout(200)
+
+    headers = [
+        (th.inner_text() or "").strip() for th in grid.locator("thead th").all()
+    ]
+    return grid, headers
+
+
+def _parse_float(val: str | None) -> float | None:
+    if not val:
+        return None
+    cleaned = val.strip().replace(",", ".")
+    m = re.search(r"[-+]?\d*\.?\d+", cleaned)
+    if not m:
+        return None
+    try:
+        return float(m.group(0))
+    except ValueError:
+        return None
+
+
+def _extract_grid_data(
+    grid: Locator, headers: list[str]
+) -> tuple[str | None, dict[str, float | None], dict[str, Any]]:
+
+    rows = grid.locator("tbody > tr")
+
+    num_rows = rows.count()
+
+    if num_rows == 0:
+        return None, {}, {"headers": headers, "rows": []}
+
+    first_row = rows.first
+    cells = [
+        (td.inner_text() or "").strip() for td in first_row.locator("td").all()
+    ]
+
+    raw_data: dict[str, Any] = {
+        "headers": headers,
+        "first_row_cells": cells,
+        "total_rows_in_grid": num_rows,
+    }
+
+    col_map: dict[str, int] = {}
+    for idx, h in enumerate(headers):
+        h_norm = h.lower().replace("\n", " ").strip()
+        col_map[h_norm] = idx
+
+    def get_cell_by_headers(possible_headers: list[str]) -> str | None:
+        for ph in possible_headers:
+            ph_norm = ph.lower()
+            for h_norm, idx in col_map.items():
+                if ph_norm in h_norm:
+                    if idx < len(cells):
+                        return cells[idx]
+        return None
+
+    update_time = get_cell_by_headers(
+        ["update time", "data time", "time", "fecha", "hora"]
+    )
+
+    if not update_time and len(cells) > 0:
+
+        for c in cells:
+            if re.search(r"\d{4}-\d{2}-\d{2}", c) or re.search(
+                r"\d{2}:\d{2}", c
+            ):
+                update_time = c
+                break
+
+    voltages: dict[str, float | None] = {
+        "r_voltage": None,
+        "s_voltage": None,
+        "t_voltage": None,
+        "rs_voltage": None,
+        "st_voltage": None,
+        "tr_voltage": None,
+    }
+
+    mapping = [
+        ("r_voltage", ["r voltage", "phase a voltage", "va", "voltage r", "grid voltage r"]),
+        ("s_voltage", ["s voltage", "phase b voltage", "vb", "voltage s", "grid voltage s"]),
+        ("t_voltage", ["t voltage", "phase c voltage", "vc", "voltage t", "grid voltage t"]),
+        ("rs_voltage", ["rs voltage", "vrs", "line voltage rs", "uab"]),
+        ("st_voltage", ["st voltage", "vst", "line voltage st", "ubc"]),
+        ("tr_voltage", ["tr voltage", "vtr", "line voltage tr", "uca"]),
+    ]
+
+    for key, possible_names in mapping:
+        val_str = get_cell_by_headers(possible_names)
+        voltages[key] = _parse_float(val_str)
+
+    if all(v is None for v in voltages.values()):
+
+        voltage_cells: list[tuple[str, float]] = []
+
+        for idx, (h, c) in enumerate(zip(headers, cells)):
+            if "volt" in h.lower() or "v" in h.lower():
+                parsed = _parse_float(c)
+                if parsed is not None:
+                    voltage_cells.append((h, parsed))
+
+        if len(voltage_cells) >= 1:
+            voltages["r_voltage"] = voltage_cells[0][1]
+        if len(voltage_cells) >= 2:
+            voltages["s_voltage"] = voltage_cells[1][1]
+        if len(voltage_cells) >= 3:
+            voltages["t_voltage"] = voltage_cells[2][1]
+
+    return update_time, voltages, raw_data
+
+
+def _insert_voltage_reading(
+    conn: sqlite3.Connection,
+    *,
+    table_name: str,
+    captured_at: str,
+    plant_id: str,
+    plant_name: str | None,
+    device_key: str,
+    device_name: str,
+    update_time: str | None,
+    voltages: dict[str, float | None],
+    raw_data: dict[str, Any],
+) -> None:
+
+    conn.execute(
+        f"""
+        INSERT INTO "{table_name}" (
+            captured_at, plant_id, plant_name, device_key, device_name,
+            update_time, r_voltage, s_voltage, t_voltage,
+            rs_voltage, st_voltage, tr_voltage, raw_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            captured_at,
+            plant_id,
+            plant_name,
+            device_key,
+            device_name,
+            update_time,
+            voltages.get("r_voltage"),
+            voltages.get("s_voltage"),
+            voltages.get("t_voltage"),
+            voltages.get("rs_voltage"),
+            voltages.get("st_voltage"),
+            voltages.get("tr_voltage"),
+            json.dumps(raw_data, ensure_ascii=False),
+        ),
+    )
+
+    metrics = {
+        "r_voltage": voltages.get("r_voltage"),
+        "s_voltage": voltages.get("s_voltage"),
+        "t_voltage": voltages.get("t_voltage"),
+        "rs_voltage": voltages.get("rs_voltage"),
+        "st_voltage": voltages.get("st_voltage"),
+        "tr_voltage": voltages.get("tr_voltage"),
+        "table_name": table_name,
+    }
+    save_telemetry_reading(
+        device_key=device_key,
+        plant_id=plant_id,
+        provider="shinemonitor",
+        update_time=update_time,
+        metrics=metrics,
+        raw_data=raw_data,
+        inserted_at=captured_at,
+    )
 
 
 def _load_plants(storage_dir: Path) -> list[PlantRef]:
@@ -827,15 +764,14 @@ def main() -> None:
 
     headless = _env_flag("HEADLESS", True)
 
-    default_timeout_ms = _env_int("SHINE_DEFAULT_TIMEOUT_MS", 30_000)
-    nav_timeout_ms = _env_int("SHINE_NAV_TIMEOUT_MS", 60_000)
+    default_timeout_ms = _env_int("SHINE_DEFAULT_TIMEOUT_MS", 15_000)
+    nav_timeout_ms = _env_int("SHINE_NAV_TIMEOUT_MS", 30_000)
 
     storage_dir = base_dir / "storage"
     storage_dir.mkdir(parents=True, exist_ok=True)
 
     storage_state_path = storage_dir / "shinemonitor.json"
 
-    # scope: uno o todos
     only_plant_id = (os.getenv("PLANT_ID") or "").strip()
 
     plants = _load_plants(storage_dir)
@@ -853,7 +789,6 @@ def main() -> None:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
 
-        # Crear tablas meta/eventos antes de cualquier inserción
         _ensure_meta_tables(conn)
         conn.commit()
 
@@ -873,9 +808,8 @@ def main() -> None:
 
             try:
                 page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=nav_timeout_ms)
-                # Espera extendida tras cargar la página principal
-                page.wait_for_selector("#loginusr > input", timeout=60_000)
-                page.wait_for_timeout(5000)  # Espera adicional para asegurar carga completa
+                page.wait_for_selector("#loginusr > input", timeout=30_000)
+                page.wait_for_timeout(300)
                 _login_if_needed(page, user=user, password=password)
 
                 for idx, plant in enumerate(plants, start=1):
@@ -883,23 +817,20 @@ def main() -> None:
 
                     plant_name: str | None = None
                     try:
-                        # Si la sesión se cae en medio del run, re-login best-effort.
                         _login_if_needed(page, user=user, password=password)
 
-                        # Espera extendida tras seleccionar planta
-                        page.wait_for_timeout(3000)
+                        page.wait_for_timeout(200)
                         plant_name, tree = _select_plant_and_load_tree(
                             page,
                             plant=plant,
                             run_dir=run_dir,
-                            timeout_ms=60_000,
+                            timeout_ms=20_000,
                             retries=1,
                         )
 
                         _upsert_meta_plant(conn, plant.plant_id, plant_name, captured_at)
                         conn.commit()
                     except Exception as e:
-                        # Registrar el fallo de la planta y seguir con la siguiente.
                         detail = str(e)
                         _insert_plant_event(
                             conn,
@@ -915,7 +846,6 @@ def main() -> None:
 
                     inverter_count, device_anchors = _collect_inverters_and_device_anchors(tree)
                     if inverter_count == 0:
-                        # requisito: guardar "No hay Inverter"
                         print("  - NO_INVERTER", flush=True)
                         _insert_plant_event(
                             conn,
@@ -933,7 +863,6 @@ def main() -> None:
                         continue
 
                     if not device_anchors:
-                        # inverter existe pero sin monitores
                         _insert_plant_event(
                             conn,
                             captured_at=captured_at,
@@ -952,13 +881,11 @@ def main() -> None:
                     device_count = len(device_anchors)
 
                     for dev_index in range(device_count):
-                        # re-seleccionar en cada iteración para evitar locators viejos
                         try:
-                            # Espera extendida tras cargar árbol
-                            page.wait_for_timeout(2000)
+                            page.wait_for_timeout(200)
                             tree = _ensure_tree_loaded(
                                 page,
-                                timeout_ms=60_000,
+                                timeout_ms=20_000,
                                 retries=1,
                                 run_dir=run_dir,
                                 debug_name=f"{plant.plant_id}-tree-reload-{dev_index+1:02d}",
@@ -966,7 +893,6 @@ def main() -> None:
                             if _tree_is_empty(tree):
                                 raise RuntimeError("TREE_EMPTY")
                         except Exception as e:
-                            # Reintento SOLO si es timeout / árbol vacío
                             retryable = isinstance(e, PlaywrightTimeoutError) or (str(e).strip() == "TREE_EMPTY")
                             if retryable:
                                 try:
@@ -981,7 +907,7 @@ def main() -> None:
                                         page,
                                         plant=plant,
                                         run_dir=run_dir,
-                                        timeout_ms=60_000,
+                                        timeout_ms=20_000,
                                         retries=0,
                                     )
                                 except Exception as e2:
@@ -1052,8 +978,6 @@ def main() -> None:
 
                         existing = _get_device_table(conn, device_key)
                         if existing and existing != desired and _table_exists(conn, existing):
-                            # Renombrar para cumplir el naming requerido por negocio.
-                            # Si desired ya existe y no es del mismo device_key, claim_friendly_table_name habrá ajustado.
                             conn.execute(f'ALTER TABLE "{existing}" RENAME TO "{desired}"')
                             conn.commit()
 
@@ -1071,12 +995,11 @@ def main() -> None:
 
                         print(f"  - Device [{dev_index+1}/{len(device_anchors)}]: {device_name}", flush=True)
 
-                        # --- Abrir Data Details (con 1 reintento si no aparece) ---
                         a.click()
-                        page.wait_for_timeout(700)
+                        page.wait_for_timeout(300)
                         opened = _click_data_details(
                             page,
-                            timeout_ms=30_000,
+                            timeout_ms=10_000,
                             run_dir=run_dir,
                             debug_name=f"{plant.plant_id}-03-notab-{dev_index+1:02d}",
                         )
@@ -1094,231 +1017,109 @@ def main() -> None:
                                     page,
                                     plant=plant,
                                     run_dir=run_dir,
-                                    timeout_ms=60_000,
+                                    timeout_ms=20_000,
                                     retries=1,
                                 )
                                 if plant_name_retry:
                                     plant_name = plant_name_retry
-
                                 _, anchors_retry = _collect_inverters_and_device_anchors(tree_retry)
-                                a_retry = _find_device_anchor(
-                                    anchors_retry,
-                                    device_key=device_key,
-                                    device_name=device_name,
-                                )
-                                if a_retry is not None:
+                                if dev_index < len(anchors_retry):
+                                    a_retry = anchors_retry[dev_index]
                                     a_retry.click()
-                                    page.wait_for_timeout(900)
+                                    page.wait_for_timeout(300)
                                     opened = _click_data_details(
                                         page,
-                                        timeout_ms=120_000,
+                                        timeout_ms=10_000,
                                         run_dir=run_dir,
                                         debug_name=f"{plant.plant_id}-03-notab-retry-{dev_index+1:02d}",
                                     )
                             except Exception:
-                                opened = False
+                                pass
 
                         if not opened:
-                            _insert_row(
+                            _insert_plant_event(
                                 conn,
-                                device_table,
                                 captured_at=captured_at,
                                 plant_id=plant.plant_id,
                                 plant_name=plant_name,
-                                device_name=device_name,
-                                device_key=device_key,
-                                status="NO_TAB",
-                                status_detail="No se encontró la pestaña 'Data Details' (reintentado)",
-                                data=None,
+                                status="DATA_DETAILS_TIMEOUT",
+                                status_detail=f"No apareció pestaña Data Details para {device_name}",
                             )
                             conn.commit()
                             continue
 
-                        status, status_detail = _extract_no_data_message(page)
-                        if status == "NO_DATA":
-                            # requisito: marcar como "no tiene data" y guardar fecha
-                            try:
-                                detail_txt = (status_detail or "").strip()
-                                if detail_txt:
-                                    print(f"    - NO_DATA: {device_name} ({detail_txt})", flush=True)
-                                else:
-                                    print(f"    - NO_DATA: {device_name}", flush=True)
-                            except Exception:
-                                pass
-                            _insert_row(
+                        last_sig: str | None = None
+                        try:
+                            grid_el, headers = _ensure_grid_data(
+                                page,
+                                timeout_ms=15_000,
+                                attempts=MAX_ATTEMPTS,
+                                last_signature=None,
+                            )
+                            update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
+                            last_sig = _get_grid_signature(grid_el)
+                        except Exception as e:
+                            detail = str(e)
+                            _insert_plant_event(
                                 conn,
-                                device_table,
                                 captured_at=captured_at,
                                 plant_id=plant.plant_id,
                                 plant_name=plant_name,
-                                device_name=device_name,
-                                device_key=device_key,
-                                status="NO_DATA",
-                                status_detail=status_detail,
-                                data=None,
+                                status="GRID_ERROR",
+                                status_detail=f"Error al leer grid ({device_name}): {detail[:300]}",
                             )
-                            # También registrar a nivel planta para auditoría rápida.
-                            try:
-                                det = f"{device_name}: {status_detail}" if status_detail else device_name
-                                _insert_plant_event(
-                                    conn,
-                                    captured_at=captured_at,
-                                    plant_id=plant.plant_id,
-                                    plant_name=plant_name,
-                                    status="NO_DATA",
-                                    status_detail=(det[:500] if det else None),
-                                )
-                            except Exception:
-                                pass
                             conn.commit()
-                            page.screenshot(
-                                path=str(run_dir / f"{plant.plant_id}-03-nodata-{dev_index+1:02d}.png"),
-                                full_page=True,
+                            _dump_debug(
+                                page,
+                                run_dir,
+                                f"{plant.plant_id}-04-grid-error-{dev_index+1:02d}",
                             )
                             continue
 
-                        latest = _extract_latest_row(page, timeout_ms=20_000)
-                        if latest is None:
-                            # Reintentar SOLO para este error: re-seleccionar planta/device y esperar más.
+                        if not update_time and all(v is None for v in voltages.values()):
+                            print("    * (Reintento de lectura por tabla vacía...)", flush=True)
                             try:
-                                print(
-                                    f"  [RETRY] No se pudo leer invDetailCon; reintentando planta/device...",
-                                    flush=True,
-                                )
-                            except Exception:
-                                pass
-
-                            try:
-                                plant_name_retry, tree_retry = _select_plant_and_load_tree(
+                                _click_grid_refresh_button(page)
+                                page.wait_for_timeout(300)
+                                grid_el, headers = _ensure_grid_data(
                                     page,
-                                    plant=plant,
-                                    run_dir=run_dir,
-                                    timeout_ms=60_000,
-                                    retries=1,
+                                    timeout_ms=10_000,
+                                    attempts=2,
+                                    last_signature=last_sig,
                                 )
-                                if plant_name_retry:
-                                    plant_name = plant_name_retry
-
-                                _, anchors_retry = _collect_inverters_and_device_anchors(tree_retry)
-                                a_retry = _find_device_anchor(
-                                    anchors_retry,
-                                    device_key=device_key,
-                                    device_name=device_name,
-                                )
-                                if a_retry is not None:
-                                    a_retry.click()
-                                    page.wait_for_timeout(900)
-                                    if _click_data_details(
-                                        page,
-                                        timeout_ms=120_000,
-                                        run_dir=run_dir,
-                                        debug_name=f"{plant.plant_id}-03-notab-retry2-{dev_index+1:02d}",
-                                    ):
-                                        status2, status_detail2 = _extract_no_data_message(page)
-                                        if status2 == "NO_DATA":
-                                            try:
-                                                detail_txt = (status_detail2 or "").strip()
-                                                if detail_txt:
-                                                    print(
-                                                        f"    - NO_DATA: {device_name} ({detail_txt})",
-                                                        flush=True,
-                                                    )
-                                                else:
-                                                    print(f"    - NO_DATA: {device_name}", flush=True)
-                                            except Exception:
-                                                pass
-                                            _insert_row(
-                                                conn,
-                                                device_table,
-                                                captured_at=captured_at,
-                                                plant_id=plant.plant_id,
-                                                plant_name=plant_name,
-                                                device_name=device_name,
-                                                device_key=device_key,
-                                                status="NO_DATA",
-                                                status_detail=status_detail2,
-                                                data=None,
-                                            )
-                                            try:
-                                                det = (
-                                                    f"{device_name}: {status_detail2}"
-                                                    if status_detail2
-                                                    else device_name
-                                                )
-                                                _insert_plant_event(
-                                                    conn,
-                                                    captured_at=captured_at,
-                                                    plant_id=plant.plant_id,
-                                                    plant_name=plant_name,
-                                                    status="NO_DATA",
-                                                    status_detail=(det[:500] if det else None),
-                                                )
-                                            except Exception:
-                                                pass
-                                            conn.commit()
-                                            page.screenshot(
-                                                path=str(
-                                                    run_dir
-                                                    / f"{plant.plant_id}-03-nodata-retry-{dev_index+1:02d}.png"
-                                                ),
-                                                full_page=True,
-                                            )
-                                            continue
-
-                                        latest = _extract_latest_row(page, timeout_ms=60_000)
+                                update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
                             except Exception:
                                 pass
 
-                        if latest is None:
-                            _insert_row(
-                                conn,
-                                device_table,
-                                captured_at=captured_at,
-                                plant_id=plant.plant_id,
-                                plant_name=plant_name,
-                                device_name=device_name,
-                                device_key=device_key,
-                                status="NO_TABLE",
-                                status_detail="No se pudo leer la tabla invDetailCon (reintentado)",
-                                data=None,
-                            )
-                            conn.commit()
-                            page.screenshot(
-                                path=str(run_dir / f"{plant.plant_id}-03-notable-{dev_index+1:02d}.png"),
-                                full_page=True,
-                            )
-                            continue
-
-                        _insert_row(
+                        _insert_voltage_reading(
                             conn,
-                            device_table,
+                            table_name=device_table,
                             captured_at=captured_at,
                             plant_id=plant.plant_id,
                             plant_name=plant_name,
-                            device_name=device_name,
                             device_key=device_key,
-                            status="OK",
-                            status_detail=None,
-                            data=latest,
+                            device_name=device_name,
+                            update_time=update_time,
+                            voltages=voltages,
+                            raw_data=raw_data,
                         )
                         conn.commit()
 
-                        page.screenshot(
-                            path=str(run_dir / f"{plant.plant_id}-03-ok-{dev_index+1:02d}.png"),
-                            full_page=True,
+                        print(
+                            f"    -> OK ({device_table}) update_time={update_time} voltages={voltages}",
+                            flush=True,
                         )
 
-                context.storage_state(path=str(storage_state_path))
+                page.wait_for_timeout(200)
 
+            except Exception as e:
+                _dump_debug(page, run_dir, "fatal-error")
+                raise e
             finally:
                 context.close()
                 browser.close()
-
     finally:
         conn.close()
-
-    print(f"DB: {db_path}")
-    print("Terminado")
 
 
 if __name__ == "__main__":
