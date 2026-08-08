@@ -1,5 +1,5 @@
 {
   "version": "2.3.6",
   "release_date": "2026-08-08",
-  "notes": "Actualizaci\u00c3\u00b3n de estados en tiempo real para el enlace con Supabase (Conectado, Desconectado, Transmitiendo de subida/bajada y Error)."
+  "notes": "Actualización de estados en tiempo real para el enlace con Supabase (Conectado, Desconectado, Transmitiendo de subida/bajada y Error)."
 }
