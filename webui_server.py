@@ -517,6 +517,41 @@ def _sqlite_latest_ok_row(conn: sqlite3.Connection, table: str) -> dict[str, Any
         return _sqlite_latest_row(conn, table)
 
 
+def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        from providers.supabase_client import get_supabase
+        sb = get_supabase()
+        if not sb.is_enabled():
+            return {}
+        import ssl, urllib.request
+        url = f"{sb.url.rstrip('/')}/rest/v1/telemetry_readings?select=provider,device_key,update_time,status,metrics,inserted_at&provider=eq.{provider}&order=inserted_at.desc&limit=1000"
+        headers = {
+            "apikey": sb.key,
+            "Authorization": f"Bearer {sb.key}",
+        }
+        req = urllib.request.Request(url, headers=headers)
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+            for r in rows:
+                dev_k = str(r.get("device_key") or "").strip()
+                if dev_k and _norm_key(dev_k) not in out:
+                    m = dict(r.get("metrics") or {})
+                    ts = str(r.get("update_time") or r.get("inserted_at") or "").strip()
+                    st = str(r.get("status") or "").strip()
+                    m["Timestamp"] = ts
+                    m["update_time"] = ts
+                    m["timestamp"] = ts
+                    m["captured_at"] = ts
+                    m["status"] = st
+                    m["connection_status"] = st
+                    out[_norm_key(dev_k)] = m
+    except Exception:
+        pass
+    return out
+
+
 def _sheet_is_row_slot_layout(ws) -> bool:
     try:
         a1 = ws.cell(1, 1).value
@@ -936,21 +971,30 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: 
             pass
     ws.freeze_panes = "A2"
 
-    # Helper: fila más reciente (por id) entre varias tablas (incluye NO_DATA)
-    def _latest_any_row(tables: list[str]) -> dict[str, Any] | None:
+    sm_telemetry = _fetch_supabase_telemetry_map("shinemonitor")
+
+    # Helper: fila más reciente (por id o Supabase) entre varias tablas
+    def _latest_any_row(tables: list[str], dev_key: str = "", dev_name: str = "") -> dict[str, Any] | None:
+        cands = [dev_key, dev_name] + tables
+        for c in cands:
+            nk = _norm_key(c)
+            if nk in sm_telemetry:
+                return sm_telemetry[nk]
+
         best = None
         best_id = -1
-        for t in tables:
-            rd = _sqlite_latest_row(conn_sm, t)
-            if not rd:
-                continue
-            try:
-                rid = int(rd.get("id") or 0)
-            except Exception:
-                rid = 0
-            if rid > best_id:
-                best_id = rid
-                best = rd
+        if conn_sm:
+            for t in tables:
+                rd = _sqlite_latest_row(conn_sm, t)
+                if not rd:
+                    continue
+                try:
+                    rid = int(rd.get("id") or 0)
+                except Exception:
+                    rid = 0
+                if rid > best_id:
+                    best_id = rid
+                    best = rd
         return best
 
     # Construir filas
@@ -1002,10 +1046,8 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: 
         except Exception:
             pass
 
-        # Actualizar solo el slot pedido con la fila más reciente de la BD
-        best = _latest_any_row(tables)
-        if best is not None and not _is_db_row_from_today(best):
-            best = None
+        # Actualizar solo el slot pedido con la fila más reciente de la BD o Supabase
+        best = _latest_any_row(tables, d.get("device_key") or "", device)
 
         # buscar fila del slot en este bloque
         for i, hl in enumerate(hour_labels):
@@ -1028,11 +1070,20 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: 
                     if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
                         continue
                     db_col = excel_to_db.get(hn)
-                    if not db_col:
-                        continue
-                    val = best.get(db_col)
+                    val = None
+                    if db_col and db_col in best:
+                        val = best.get(db_col)
+                    elif h in best:
+                        val = best.get(h)
+                    elif hn in best:
+                        val = best.get(hn)
+                    else:
+                        for bk, bv in best.items():
+                            if _norm_key(bk) == hn or (db_col and _norm_key(bk) == _norm_key(db_col)):
+                                val = bv
+                                break
+
                     if hn == _norm_key("timestamp"):
-                        # si no hay timestamp, mostrar el status (ej. NO_DATA)
                         if val in (None, "", " ") and status:
                             val = status
                     ws.cell(r, c).value = val
