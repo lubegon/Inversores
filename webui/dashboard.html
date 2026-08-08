@@ -6,8 +6,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Captura de Inversores - Dashboard</title>
-  <link rel="icon" href="/rayo.ico" type="image/x-icon" />
   <link rel="stylesheet" href="/styles.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     /* --- HERO METRICS (Cabecera Superior) --- */
     .hero-metrics {
@@ -138,14 +138,14 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">⚡</div>
+        <div class="brand-mark"><i data-lucide="zap"></i></div>
         <div class="brand-name">Captura de Inversores</div>
       </div>
 
       <nav class="nav">
-        <a class="nav-item" href="/dashboard" data-nav="dashboard">Dashboard</a>
-        <a class="nav-item" href="/reports" data-nav="reports">Reportes</a>
-        <a class="nav-item" href="/settings" data-nav="settings">Configuración</a>
+        <a class="nav-item" href="/dashboard" data-nav="dashboard"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+        <a class="nav-item" href="/reports" data-nav="reports"><i data-lucide="file-spreadsheet"></i> Reportes</a>
+        <a class="nav-item" href="/settings" data-nav="settings"><i data-lucide="settings"></i> Configuración</a>
       </nav>
 
       <div class="sidebar-footer">
@@ -157,7 +157,7 @@
     <div class="main">
       <header class="topbar">
         <div>
-          <div class="page-title">CAPTURA DE INVERSORES - SOLAR CONTROL PANEL</div>
+          <div class="page-title">CAPTURA DE INVERSORES <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: #ff6b00; color: white; vertical-align: middle; margin-left: 8px;" id="badge-ver">v...</span></div>
           <div class="page-sub" style="color: #94a3b8; font-size: 0.85rem;">Dashboard Principal</div>
         </div>
         <!-- Actions removed -->
@@ -166,20 +166,26 @@
       <main class="content">
         <div class="hero-metrics">
           <div class="metric-card">
-            <div class="metric-icon">⚡</div>
+            <div class="metric-icon" style="color: var(--primary);"><i data-lucide="activity"></i></div>
             <div class="metric-info">
               <div class="metric-title">System Status</div>
               <div class="metric-value" id="hm-status"><span class="status-dot"></span> Loading...</div>
             </div>
           </div>
           <div class="metric-card">
-            <div class="metric-icon">🔌</div>
+            <div class="metric-icon" style="color: var(--ok);"><i data-lucide="plug"></i></div>
             <div class="metric-info">
               <div class="metric-title">Total Devices</div>
               <div class="metric-value" id="hm-devices">--</div>
             </div>
           </div>
-          <!-- Extra metrics removed -->
+          <div class="metric-card">
+            <div class="metric-icon" id="sb-status-icon" style="color: #60a5fa;"><i data-lucide="cloud"></i></div>
+            <div class="metric-info">
+              <div class="metric-title">Supabase Link</div>
+              <div class="metric-value" id="hm-supabase"><span class="status-dot"></span> Checking...</div>
+            </div>
+          </div>
         </div>
 
         <section class="card-grid" id="provider-cards"></section>
@@ -208,6 +214,20 @@
           </div>
           <div style="margin-top: 14px;">
             <div class="status-grid" id="status-grid-values" aria-label="Status Grid Values"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="supabase-live-feed">
+          <div class="panel-head">
+            <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+              <span>☁️ SUPABASE LIVE ACTIVITY FEED</span>
+              <span class="pulse-ring" id="sb-pulse" style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
+            </div>
+          </div>
+          <div style="margin-top: 14px;">
+            <div class="feed-container" id="sb-activity-feed" style="max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; border-radius: 8px; background: #0f172a; padding: 12px; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 8px;">
+              <div style="color: #64748b; text-align: center; padding: 10px;">Esperando transferencias...</div>
+            </div>
           </div>
         </section>
         

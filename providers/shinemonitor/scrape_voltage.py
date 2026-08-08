@@ -243,7 +243,6 @@ def _insert_plant_event(
 
 def _launch_browser(p: Any, *, headless: bool) -> Any:
     launch_args = [
-        "--remote-debugging-pipe",
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",

@@ -100,6 +100,24 @@ class _UrllibSupabaseClient:
         return _UrllibSupabaseTable(self.manager, table_name)
 
 
+def log_supabase_activity(action: str, status: str, detail: str, provider: str = "webui") -> None:
+    try:
+        storage_dir = Path(__file__).resolve().parent.parent / "storage"
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        path = storage_dir / "supabase_activity.jsonl"
+        rec = {
+            "timestamp": datetime.now().isoformat(),
+            "action": action,
+            "status": status,
+            "detail": detail,
+            "provider": provider,
+        }
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 class SupabaseManager:
     """Administrador centralizado de la conexion e ingesta de datos con Supabase.
     
@@ -167,9 +185,11 @@ class SupabaseManager:
             self.client.table("monitors_plants").upsert(
                 payload, on_conflict="provider,plant_id"
             ).execute()
+            log_supabase_activity("upsert_plant", "success", f"Planta {name or plant_id} guardada", provider)
             return True
         except Exception as exc:
             logger.error(f"[Supabase] Error guardando planta ({provider}/{plant_id}): {exc}")
+            log_supabase_activity("upsert_plant", "error", f"Planta {name or plant_id}: {exc}", provider)
             return False
 
     def save_device(
@@ -198,9 +218,11 @@ class SupabaseManager:
             self.client.table("devices").upsert(
                 payload, on_conflict="provider,device_key"
             ).execute()
+            log_supabase_activity("upsert_device", "success", f"Dispositivo {device_name or device_key} guardado", provider)
             return True
         except Exception as exc:
             logger.error(f"[Supabase] Error guardando dispositivo ({device_key}): {exc}")
+            log_supabase_activity("upsert_device", "error", f"Dispositivo {device_key}: {exc}", provider)
             return False
 
     def save_telemetry_reading(
@@ -242,9 +264,11 @@ class SupabaseManager:
                 payload["inserted_at"] = inserted_at
 
             self.client.table("telemetry_readings").insert(payload).execute()
+            log_supabase_activity("insert_telemetry", "success", f"Lectura de {dev_k} enviada", prov)
             return True
         except Exception as exc:
             logger.error(f"[Supabase] Error guardando lectura telemétrica ({device_key}): {exc}")
+            log_supabase_activity("insert_telemetry", "error", f"Dispositivo {device_key}: {exc}", provider)
             return False
 
     def save_plant_event(
@@ -268,9 +292,11 @@ class SupabaseManager:
                 payload["inserted_at"] = inserted_at
 
             self.client.table("plant_events").insert(payload).execute()
+            log_supabase_activity("insert_event", "success", f"Evento de planta {plant_id}: {message}", provider)
             return True
         except Exception as exc:
             logger.error(f"[Supabase] Error guardando evento ({provider}/{plant_id}): {exc}")
+            log_supabase_activity("insert_event", "error", f"Planta {plant_id}: {exc}", provider)
             return False
 
     def upload_report_file(self, file_path: str | Path, destination_name: str | None = None) -> str | None:
@@ -280,6 +306,7 @@ class SupabaseManager:
         path = Path(file_path)
         if not path.exists():
             logger.error(f"[Supabase Storage] Archivo no existe: {file_path}")
+            log_supabase_activity("upload_report", "error", f"Archivo no existe: {file_path}", "webui")
             return None
 
         dest = destination_name or path.name
@@ -297,9 +324,11 @@ class SupabaseManager:
             # Intentar obtener URL publica
             public_url = self.client.storage.from_(self.bucket_name).get_public_url(dest)
             logger.info(f"[Supabase Storage] Reporte subido exitosamente: {public_url}")
+            log_supabase_activity("upload_report", "success", f"Reporte {dest} subido exitosamente", "webui")
             return public_url
         except Exception as exc:
             logger.error(f"[Supabase Storage] Error subiendo reporte {dest}: {exc}")
+            log_supabase_activity("upload_report", "error", f"Error subiendo {dest}: {exc}", "webui")
             return None
 
     def get_report_download_url(self, filename: str) -> str | None:
@@ -310,11 +339,15 @@ class SupabaseManager:
             # Primero intentar Signed URL de 1 hora
             signed = self.client.storage.from_(self.bucket_name).create_signed_url(filename, 3600)
             if signed and isinstance(signed, dict) and "signedUrl" in signed:
+                log_supabase_activity("get_download_url", "success", f"Generada URL firmada para {filename}", "webui")
                 return signed["signedUrl"]
             # Fallback a URL pública
-            return self.client.storage.from_(self.bucket_name).get_public_url(filename)
+            url = self.client.storage.from_(self.bucket_name).get_public_url(filename)
+            log_supabase_activity("get_download_url", "success", f"Generada URL pública para {filename}", "webui")
+            return url
         except Exception as exc:
             logger.error(f"[Supabase Storage] Error obteniendo URL para {filename}: {exc}")
+            log_supabase_activity("get_download_url", "error", f"Error obteniendo URL para {filename}: {exc}", "webui")
             return None
 
 

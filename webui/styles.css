@@ -181,6 +181,9 @@ code { color: rgba(244, 244, 245, 0.95); }
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   font-weight: 500;
   font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .nav-item:hover {
@@ -620,4 +623,46 @@ code { color: rgba(244, 244, 245, 0.95); }
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* --- Pulse animation for live updates --- */
+.pulse-ring {
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: pulse-ring-anim 1.5s infinite;
+}
+@keyframes pulse-ring-anim {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* --- Scrollbar styling for supabase activity feed --- */
+#sb-activity-feed::-webkit-scrollbar {
+  width: 5px;
+}
+#sb-activity-feed::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+#sb-activity-feed::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+#sb-activity-feed::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 107, 0, 0.4);
+}
+
+/* --- Lucide vector icons styling --- */
+.lucide, svg.lucide {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2px;
+  vertical-align: middle;
+}
+.metric-icon .lucide, .metric-icon svg.lucide {
+  width: 24px;
+  height: 24px;
+}
+.brand-mark .lucide, .brand-mark svg.lucide {
+  width: 20px;
+  height: 20px;
 }

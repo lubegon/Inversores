@@ -48,7 +48,6 @@ def _browser_choice() -> str:
 
 
 FIREWALL_SAFE_ARGS = [
-    "--remote-debugging-pipe",
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",

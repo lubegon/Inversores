@@ -467,6 +467,112 @@ async function initDashboard(config) {
     el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:100%;">${svgContent}</svg>`;
   }
 
+  async function pollSupabaseStatus() {
+    const hmSupabase = $('#hm-supabase');
+    const sbStatusIcon = $('#sb-status-icon');
+    const feedEl = $('#sb-activity-feed');
+    const sbPulse = $('#sb-pulse');
+    
+    if (!hmSupabase && !feedEl) return;
+    
+    try {
+      const status = await apiGet('/api/supabase/status');
+      
+      // Actualizar tarjeta de métrica de Supabase
+      if (hmSupabase) {
+        if (status.enabled && status.connected) {
+          hmSupabase.innerHTML = `<span class="status-dot idle"></span> Conectado`;
+          if (sbStatusIcon) {
+            sbStatusIcon.innerHTML = `<i data-lucide="cloud"></i>`;
+            sbStatusIcon.style.color = '#60a5fa';
+          }
+        } else {
+          hmSupabase.innerHTML = `<span class="status-dot error"></span> Desconectado`;
+          if (sbStatusIcon) {
+            sbStatusIcon.innerHTML = `<i data-lucide="cloud-off"></i>`;
+            sbStatusIcon.style.color = '#ef4444';
+          }
+        }
+      }
+      
+      // Actualizar feed de actividades en tiempo real
+      if (feedEl && Array.isArray(status.activities)) {
+        if (status.activities.length === 0) {
+          feedEl.innerHTML = `<div style="color: #64748b; text-align: center; padding: 10px;">Esperando transferencias...</div>`;
+          return;
+        }
+        
+        const actionIcons = {
+          upsert_plant: 'building',
+          upsert_device: 'cpu',
+          insert_telemetry: 'activity',
+          insert_event: 'alert-triangle',
+          upload_report: 'file-text',
+          get_download_url: 'link',
+          fetch_telemetry: 'download'
+        };
+        
+        const providerNames = {
+          values: 'Values',
+          shinemonitor: 'ShineMonitor',
+          growatt: 'Growatt',
+          webui: 'WebUI'
+        };
+        
+        const html = status.activities.map(act => {
+          const icon = actionIcons[act.action] || 'refresh-cw';
+          const color = act.status === 'success' ? '#10b981' : '#ef4444';
+          const stText = act.status === 'success' ? 'Éxito' : 'Error';
+          const prov = providerNames[act.provider] || act.provider;
+          
+          let time = '';
+          try {
+            time = new Date(act.timestamp).toLocaleTimeString();
+          } catch(e) {
+            time = act.timestamp || '';
+          }
+          
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:6px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="display:flex; align-items:center; justify-content:center;"><i data-lucide="${icon}" style="width:16px; height:16px; color:#94a3b8;"></i></span>
+                <div>
+                  <span style="color:#f8fafc; font-weight:600;">[${prov}]</span>
+                  <span style="color:#94a3b8; margin-left:4px;">${escapeHtml(act.detail)}</span>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; font-size:0.75rem;">
+                <span style="color:${color}; font-weight:bold;">${stText}</span>
+                <span style="color:#475569;">${time}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+        
+        feedEl.innerHTML = html;
+        
+        // Ejecutar Lucide en el feed dinámico
+        if (window.lucide) window.lucide.createIcons();
+        
+        // Efecto de pulso en vivo en el indicador de feed
+        if (sbPulse && status.activities.length > 0) {
+          const lastAct = status.activities[0];
+          if (lastAct.status === 'success') {
+            sbPulse.style.background = '#10b981';
+            sbPulse.style.boxShadow = '0 0 10px #10b981';
+          } else {
+            sbPulse.style.background = '#ef4444';
+            sbPulse.style.boxShadow = '0 0 10px #ef4444';
+          }
+        }
+      }
+    } catch (e) {
+      if (hmSupabase) {
+        hmSupabase.innerHTML = `<span class="status-dot error"></span> Desconectado`;
+      }
+    }
+  }
+
   async function loadStatusAndTrend() {
     const providers = ['growatt', 'shinemonitor', 'values'];
     for (const pk of providers) {
@@ -496,6 +602,9 @@ async function initDashboard(config) {
 
   loadStatusAndTrend().catch(() => { });
   setInterval(() => loadStatusAndTrend().catch(() => { }), 2000);
+
+  pollSupabaseStatus().catch(() => { });
+  setInterval(() => pollSupabaseStatus().catch(() => { }), 3000);
 }
 
 async function initProviders(config) {
@@ -971,6 +1080,15 @@ async function main() {
   const page = document.body?.dataset?.page || 'dashboard';
   setActiveNav(page);
   const config = await apiGet('/api/config');
+
+  const badgeVer = $('#badge-ver');
+  if (badgeVer && config?.version) {
+    badgeVer.textContent = `v${config.version}`;
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 
   if (page === 'dashboard') return initDashboard(config);
   if (page === 'providers') return initProviders(config);

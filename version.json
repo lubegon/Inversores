@@ -1,5 +1,5 @@
 {
-  "version": "2.3.2",
-  "release_date": "2026-08-07",
-  "notes": "Corrección definitiva: Shine Monitor, Values y Growhatt ahora se llenan desde Supabase REST directamente aunque no haya SQLite local. El servidor debe reiniciarse para aplicar los cambios."
+  "version": "2.3.4",
+  "release_date": "2026-08-08",
+  "notes": "Integración de indicador de versión en Dashboard principal, panel de monitoreo y feed en tiempo real de Supabase utilizando íconos estilizados tipo Lucide/Framer."
 }

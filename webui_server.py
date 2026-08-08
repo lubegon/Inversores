@@ -520,7 +520,7 @@ def _sqlite_latest_ok_row(conn: sqlite3.Connection, table: str) -> dict[str, Any
 def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     try:
-        from providers.supabase_client import get_supabase
+        from providers.supabase_client import get_supabase, log_supabase_activity
         sb = get_supabase()
         if not sb.is_enabled():
             return {}
@@ -547,8 +547,13 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
                     m["status"] = st
                     m["connection_status"] = st
                     out[_norm_key(dev_k)] = m
-    except Exception:
-        pass
+            log_supabase_activity("fetch_telemetry", "success", f"Descargadas {len(rows)} lecturas de telemetría de {provider}", "webui")
+    except Exception as exc:
+        try:
+            from providers.supabase_client import log_supabase_activity
+            log_supabase_activity("fetch_telemetry", "error", f"Error consultando telemetría de {provider}: {exc}", "webui")
+        except Exception:
+            pass
     return out
 
 
@@ -939,6 +944,22 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
 
     device_list = list(devices.values())
     device_list.sort(key=lambda x: (_norm_key(x.get("plant") or ""), _norm_key(x.get("device") or "")))
+
+    # Fallback desde Supabase cuando no hay BD local o está vacía
+    if not device_list:
+        sm_tel_preview = _fetch_supabase_telemetry_map("shinemonitor")
+        for dev_k, m in sm_tel_preview.items():
+            if "test" in dev_k:
+                continue
+            pname = str(m.get("plant_name") or m.get("plant") or "").strip()
+            dname = str(m.get("device_name") or m.get("device") or dev_k).strip()
+            device_list.append({
+                "plant": pname,
+                "device": dname,
+                "device_key": dev_k,
+                "tables": [],
+            })
+        device_list.sort(key=lambda x: (_norm_key(x.get("plant") or ""), _norm_key(x.get("device") or "")))
 
     # Limpiar hoja (valores + merges) para reconstruir la grilla ordenada
     try:
@@ -1871,6 +1892,15 @@ def _generate_or_update_report(*, slot: str) -> Path:
                 continue
 
         wb.save(REPORT_PATH)
+        
+        # Subir reporte actualizado a Supabase Storage (si está configurado)
+        try:
+            from providers.supabase_client import get_supabase
+            sb = get_supabase()
+            if sb.is_enabled():
+                sb.upload_report_file(REPORT_PATH, REPORT_FILENAME)
+        except Exception:
+            pass
     finally:
         try:
             if conn_values:
@@ -4004,10 +4034,18 @@ class Handler(BaseHTTPRequestHandler):
             env_summary = {
                 k: {"value": os.environ.get(k), "defined_in_dotenv": _dotenv_defines(k)} for k in keys
             }
+            version_str = "1.0.0"
+            try:
+                from providers.version_checker import get_local_version
+                version_str = get_local_version()
+            except Exception:
+                pass
+
             _json_response(
                 self,
                 200,
                 {
+                    "version": version_str,
                     "auth_enabled": _basic_auth_expected() is not None,
                     "host": os.environ.get("WEBUI_HOST", "0.0.0.0"),
                     "port": int(os.environ.get("WEBUI_PORT", "8000")),
@@ -4190,6 +4228,36 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
             except Exception as e:
                 _json_response(self, 400, {"error": f"{type(e).__name__}: {e}"})
+            return
+
+        if path == "/api/supabase/status":
+            try:
+                from providers.supabase_client import get_supabase, log_supabase_activity
+                sb = get_supabase()
+                enabled = sb.is_enabled()
+            except Exception:
+                enabled = False
+
+            activities = []
+            try:
+                path_act = STORAGE_DIR / "supabase_activity.jsonl"
+                if path_act.exists():
+                    lines = path_act.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    for line in reversed(lines[-25:]):
+                        line = line.strip()
+                        if line:
+                            try:
+                                activities.append(json.loads(line))
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+            _json_response(self, 200, {
+                "enabled": enabled,
+                "connected": enabled,  # since client exists and key is loaded
+                "activities": activities
+            })
             return
 
         if path == "/api/status-grid":

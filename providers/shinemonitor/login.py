@@ -68,7 +68,6 @@ def main() -> None:
         )
 
         FIREWALL_SAFE_ARGS = [
-            "--remote-debugging-pipe",
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
