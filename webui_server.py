@@ -2821,24 +2821,25 @@ def _clear_log(provider: str) -> dict[str, Any]:
 
 
 def _list_sqlite_files() -> list[dict[str, Any]]:
-    """Lista DBs sqlite en la raíz del proyecto.
-
-    Nota: los scrapers guardan en archivos tipo "Voltage*.sqlite".
-    """
-
+    """Lista DBs sqlite en la raíz, storage o carpeta deploy."""
     items: list[dict[str, Any]] = []
-    for p in sorted(BASE_DIR.glob("*.sqlite"), key=lambda x: x.name.lower()):
-        try:
-            st = p.stat()
-            items.append(
-                {
+    seen = set()
+    for d in (STORAGE_DIR, BASE_DIR, BASE_DIR / "Captura_Inversores_Deploy"):
+        if not d.exists():
+            continue
+        for p in sorted(d.glob("*.sqlite"), key=lambda x: x.name.lower()):
+            if p.name in seen:
+                continue
+            seen.add(p.name)
+            try:
+                st = p.stat()
+                items.append({
                     "name": p.name,
                     "size": int(st.st_size),
                     "mtime": float(st.st_mtime),
-                }
-            )
-        except Exception:
-            items.append({"name": p.name, "size": None, "mtime": None})
+                })
+            except Exception:
+                items.append({"name": p.name, "size": None, "mtime": None})
     return items
 
 
@@ -2848,6 +2849,10 @@ def _sqlite_open_by_name(db_name: str) -> sqlite3.Connection:
         raise ValueError("db inválida")
 
     path = BASE_DIR / db_name
+    if not path.exists():
+        path = BASE_DIR / "Captura_Inversores_Deploy" / db_name
+    if not path.exists():
+        path = STORAGE_DIR / db_name
     if not path.exists():
         raise FileNotFoundError("db no existe")
 

@@ -1,5 +1,5 @@
 {
-  "version": "2.2.8",
+  "version": "2.2.9",
   "release_date": "2026-08-07",
-  "notes": "Integración de cliente REST nativo (urllib) para conexión resiliente a Supabase en migrate_to_supabase.py sin depender de paquetes externos."
+  "notes": "Corrección y optimización del generador de reportes Excel para incorporar ingesta directa desde Supabase y respaldo SQLite, garantizando llenado completo de voltaje, corriente, potencia y marcas de tiempo."
 }

@@ -1,0 +1,43 @@
+vamos a hacer cambios enumerados:
+1.- en el dashboard modifica en el Status Grid (Operatividad) de cada uno por una barra de tareas mas dinamica.
+2.- coloca un indicador de finalizado o listo cuando termine la captura lo puedes colocar al lado de los botones iniciar, detener.
+3.- elimina informacion que no sea necesaria en el dashboard por ejemplo (settings, real-time logs, set, Network / Auth, Avg. Voltage, etc).
+4.- en Total Devices coloca la cantidad de dispositivos por cada pagina. 
+5.- incrusta en cualquier linea (comentada) de la linea de programacion una firma que diga: "Programa hecho por Duvelis Huiza modificada por Lic. Luis G.". 
+6.- coloca en el dashboard un pie de pagina con un copyrigth que diga "Programa hecho por Duvelis Huiza y el Lic. Luis G.". 
+7.- al descargar el xlsx, debe tener un orden (ejemplo si se descarga la mañama debe traer la informacion solo de la media noche, si se trae la informacion de la tarde debe tener la informacion desde la media noche y asi sucesivamente)
+
+
+
+
+Nuevos cambios
+1.- al finalizar la extraccion debe limpiar automaticamente la consola output
+2.- no se observa que la barra  de progreso funcione en la extraccion de la pagina Growatt
+3.- elimina el Historial de Scraping (24h), para que solo se vea la barra de progreso
+4.- elimina Boton Providers y Sqlite Data
+
+
+has estos cambios
+1.- valida y corrije porque sigue trayendo data vieja al descargar el archivo excel, haz una limpieza para que no se traiga si no la data descargada y la data del dia si lo amerita. 
+
+Todos los cambios pasalos a la carpeta en github y a la carpeta Captura_Inversores_Deploy
+
+
+
+Link de descarga:
+
+
+https://github.com/lubegon/Inversores
+
+boton verde (Code), descargar ZIP
+abrir carpeta y darle doblde click al archivo que dice : iniciar_servidor.bat
+dejalo que corra y haga las instalaciones necesarias
+el entrar en el dashboard haces lo siguiente:
+
+En la sección "Configuración" de la interfaz web, tendrás un módulo llamado "🔌 Cuentas de Scrapers" donde podrás editar de forma visual:
+
+ShineMonitor: SHINE_USER (Usuario) y SHINE_PASS (Contraseña)
+Growatt: GROWATT_USER (Usuario) y GROWATT_PASS (Contraseña)
+Values: VALUES_USER (Usuario) y VALUES_PASS (Contraseña)
+
+Solo ingresas los datos correspondientes en sus respectivas cajas de texto, presionas el botón Guardar Configuración al final de la página y el servidor se actualizará automáticamente con las nuevas credenciales.
