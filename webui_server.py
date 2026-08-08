@@ -767,7 +767,7 @@ def _style_report_sheet(ws) -> None:
         pass
 
 
-def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: str) -> None:
+def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None, slot: str) -> None:
     """Genera/actualiza la hoja Shine Monitor desde la BD.
 
     Objetivo: que el Excel refleje TODOS los monitores presentes en la SQLite (aunque cambien),
@@ -1101,15 +1101,8 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection, slot: 
         row += 1
 
 
-def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: str) -> None:
-    """Genera/actualiza la hoja Values desde la BD.
-
-    - Lista monitores desde meta_monitors (y fallback a tablas m_* reales).
-    - Columnas: monitor_name, Hora, y luego columnas de medición (mapeadas por meta_columns.header_text).
-    - 4 filas por monitor (Media Noche/Mañana/Medio Dia/Tarde).
-    - Al exportar un slot, solo se actualiza la fila del slot; los otros 3 slots se preservan.
-    - Si no hay datos (sin filas o sin timestamp), se escribe 'NO_DATA' en Timestamp.
-    """
+def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, slot: str) -> None:
+    """Genera/actualiza la hoja Values desde la BD o Supabase."""
 
     slot = _canonical_slot(slot)
     slot_label = _slot_label_excel(slot)
@@ -1121,7 +1114,7 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
     # Tablas de medición típicas en Values: m_*
     def _values_measurement_tables() -> list[str]:
         try:
-            tabs = [t for t in _sqlite_tables(conn_values) if t.startswith("m_")]
+            tabs = [t for t in _sqlite_tables(conn_values) if t.startswith("m_")] if conn_values else []
         except Exception:
             tabs = []
         return tabs
@@ -1155,6 +1148,14 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
         if t in known_tables:
             continue
         monitors.append((_derive_monitor_name(t), t))
+
+    values_telemetry = _fetch_supabase_telemetry_map("values")
+    if not monitors:
+        for dev_k, m in values_telemetry.items():
+            if dev_k in ("test_rest_fallback", "test_key_225"):
+                continue
+            mname = str(m.get("monitor_name") or m.get("name") or dev_k)
+            monitors.append((mname, dev_k))
 
     # Orden estable
     monitors.sort(key=lambda x: (_norm_key(x[0]), _norm_key(x[1])))
@@ -1200,7 +1201,10 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
     pos = {_norm_key(h): i for i, h in enumerate(metric_headers)}
     metric_headers.sort(key=lambda h: (0 if _norm_key(h) == _norm_key("Timestamp") else 1, pos.get(_norm_key(h), 10**9)))
 
-    headers = ["monitor_name", "Hora"] + metric_headers
+    if not metric_headers:
+        headers = ["Nodo", "Hora", "timestamp", "battery_voltage", "pv1_voltage", "pv2_voltage", "inverter_voltage", "bms_battery_voltage", "load_current", "batt_current", "pv1_charger_current", "bms_battery_current", "pv2_charger_current", "pv1_charger_power", "pv2_charger_power", "pv_total_charger_power", "soc", "pload", "pgrid", "work_state", "grid_voltage", "software_version", "rated_power", "inverter_current", "grid_current", "pinverter", "sinverter", "sgrid", "sload", "qinverter", "qgrid", "qload", "inverter_frequency", "grid_frequency", "ac_radiator_temp", "transformer_temp", "dc_radiator_temp", "accum_charger_power", "accum_discharger_power", "accum_buy_power", "accum_sell_power", "accum_load_power", "accum_self_use_power", "batt_power", "charger_work_enable", "pv_cumulative_power", "bms_battery_temp", "estado_bateria", "estado_soc"]
+    else:
+        headers = ["monitor_name", "Hora"] + metric_headers
 
     # Leer datos existentes para preservarlos (monitor, slot) -> {header_norm: value}
     def _read_existing() -> dict[tuple[str, str], dict[str, Any]]:
@@ -1311,10 +1315,13 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
         except Exception:
             pass
 
-        # Actualizar solo el slot pedido
-        best = _latest_row(t)
-        if best is not None and not _is_db_row_from_today(best):
-            best = None
+        # Actualizar solo el slot pedido — priorizar Supabase sobre SQLite local
+        best = values_telemetry.get(_norm_key(t)) or values_telemetry.get(_norm_key(mon_name))
+        if best is None:
+            db_row = _latest_row(t)
+            if db_row is not None and not _is_db_row_from_today(db_row):
+                db_row = None
+            best = db_row
 
         # buscar fila del slot
         target_r = None
@@ -1324,10 +1331,9 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
                 break
         if target_r is not None:
             if best is None:
-                # sin filas -> NO_DATA en Timestamp y None en el resto
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
-                    if hn in (_norm_key("monitor_name"), _norm_key("hora")):
+                    if hn in (_norm_key("monitor_name"), _norm_key("nodo"), _norm_key("hora")):
                         continue
                     if hn == _norm_key("timestamp"):
                         ws.cell(target_r, c).value = "NO_DATA"
@@ -1335,19 +1341,25 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
                         ws.cell(target_r, c).value = None
             else:
                 colmap = table_map.get(t) or {}
-                ts_written = False
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
-                    if hn in (_norm_key("monitor_name"), _norm_key("hora")):
+                    if hn in (_norm_key("monitor_name"), _norm_key("nodo"), _norm_key("hora")):
                         continue
                     db_col = colmap.get(hn)
-                    if not db_col:
-                        continue
-                    val = best.get(db_col) if isinstance(best, dict) else None
-                    if hn == _norm_key("timestamp"):
-                        ts_written = True
-                        if val in (None, "", " "):
-                            val = "NO_DATA"
+                    val = None
+                    if db_col and db_col in best:
+                        val = best.get(db_col)
+                    elif h in best:
+                        val = best.get(h)
+                    elif hn in best:
+                        val = best.get(hn)
+                    else:
+                        for bk, bv in best.items():
+                            if _norm_key(bk) == hn:
+                                val = bv
+                                break
+                    if hn == _norm_key("timestamp") and val in (None, "", " "):
+                        val = "NO_DATA"
                     ws.cell(target_r, c).value = val
 
         row += 4
@@ -1362,15 +1374,8 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection, slot: st
         row += 1
 
 
-def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection, slot: str) -> None:
-    """Genera/actualiza la hoja Growhatt desde la BD de Growatt.
-
-    - Fuente de verdad: tablas reales g_* dentro de la SQLite.
-    - Columnas: plant_name, Hora, y luego TODAS las columnas encontradas (normalizando update_time -> Timestamp).
-    - 4 filas por planta (Media Noche/Mañana/Medio Dia/Tarde).
-    - Al exportar un slot, solo se actualiza la fila del slot; los otros 3 slots se preservan.
-    - Si no hay datos (sin filas o sin timestamp), se escribe 'NO_DATA' en Timestamp.
-    """
+def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None, slot: str) -> None:
+    """Genera/actualiza la hoja Growhatt desde la BD de Growatt o Supabase."""
 
     slot = _canonical_slot(slot)
     slot_label = _slot_label_excel(slot)
@@ -1381,7 +1386,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection, slot: 
 
     def _growatt_tables() -> list[str]:
         try:
-            return [t for t in _sqlite_tables(conn_growatt) if t.startswith("g_")]
+            return [t for t in _sqlite_tables(conn_growatt) if t.startswith("g_")] if conn_growatt else []
         except Exception:
             return []
 
@@ -1428,6 +1433,14 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection, slot: 
         if not pname:
             pname = t
         plants.append((pname, t))
+    growatt_telemetry = _fetch_supabase_telemetry_map("growatt")
+    if not plants:
+        for dev_k, m in growatt_telemetry.items():
+            if dev_k in ("test_rest_fallback", "test_key_225"):
+                continue
+            pname = str(m.get("plant_name") or m.get("plant") or dev_k)
+            plants.append((pname, dev_k))
+
     plants.sort(key=lambda x: (_norm_key(x[0]), _norm_key(x[1])))
 
     # Construir headers dinámicos: unión de columnas en orden (normalizando update_time -> Timestamp)
@@ -1454,7 +1467,10 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection, slot: 
     pos = {_norm_key(h): i for i, h in enumerate(metric_headers)}
     metric_headers.sort(key=lambda h: (0 if _norm_key(h) == _norm_key("Timestamp") else 1, pos.get(_norm_key(h), 10**9)))
 
-    headers = ["plant_name", "Hora"] + metric_headers
+    if not metric_headers:
+        headers = ["plant_name", "Hora", "Timestamp", "connection_status", "battery_voltage", "pv1_pv2_voltage", "pv1_pv2_recharging_current", "total_charge_current", "ac_input_voltage_frequency", "ac_output_voltage_frequency"]
+    else:
+        headers = ["plant_name", "Hora"] + metric_headers
 
     # Leer datos existentes para preservarlos: (plant, slot) -> {header_norm: value}
     def _read_existing() -> dict[tuple[str, str], dict[str, Any]]:
@@ -1824,16 +1840,16 @@ def _generate_or_update_report(*, slot: str) -> Path:
     sm_plants_map = _shinemonitor_plants(conn_sm) if conn_sm else {}
 
     try:
-        # ShineMonitor: llenar por layout real (filas por Hora)
-        if conn_sm is not None and "Shine Monitor" in wb.sheetnames:
+        # ShineMonitor: llenar por layout real (filas por Hora) desde Supabase o BD
+        if "Shine Monitor" in wb.sheetnames:
             _update_report_shinemonitor_sheet(ws=wb["Shine Monitor"], conn_sm=conn_sm, slot=slot)
 
-        # Values: llenar basado en BD (meta_monitors/meta_columns)
-        if conn_values is not None and "Values" in wb.sheetnames:
+        # Values: llenar basado en Supabase o BD
+        if "Values" in wb.sheetnames:
             _update_report_values_sheet(ws=wb["Values"], conn_values=conn_values, slot=slot)
 
-        # Growatt: llenar basado en BD (tablas g_*)
-        if conn_growatt is not None and "Growhatt" in wb.sheetnames:
+        # Growatt: llenar basado en Supabase o BD
+        if "Growhatt" in wb.sheetnames:
             _update_report_growatt_sheet(ws=wb["Growhatt"], conn_growatt=conn_growatt, slot=slot)
 
         # Estilo (todas las hojas existentes del reporte)

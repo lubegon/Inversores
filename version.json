@@ -1,5 +1,5 @@
 {
-  "version": "2.3.1",
+  "version": "2.3.2",
   "release_date": "2026-08-07",
-  "notes": "Parche de evitación del Firewall de Windows (no-sandbox y remote-debugging-pipe) en Playwright para evitar solicitudes de permisos de Administrador en PCs restringidas."
+  "notes": "Corrección definitiva: Shine Monitor, Values y Growhatt ahora se llenan desde Supabase REST directamente aunque no haya SQLite local. El servidor debe reiniciarse para aplicar los cambios."
 }
