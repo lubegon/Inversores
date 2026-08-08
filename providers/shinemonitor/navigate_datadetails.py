@@ -54,17 +54,27 @@ def _browser_choice() -> str:
     return (os.getenv("BROWSER") or "chromium").strip().lower()
 
 
+FIREWALL_SAFE_ARGS = [
+    "--remote-debugging-pipe",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--no-first-run",
+    "--no-zygote",
+]
+
+
 def _launch_browser(p, headless: bool):
     choice = _browser_choice()
     use_edge = choice in {"edge", "msedge"}
 
     try:
         if use_edge:
-            return p.chromium.launch(headless=headless, channel="msedge")
-        return p.chromium.launch(headless=headless)
+            return p.chromium.launch(headless=headless, channel="msedge", args=FIREWALL_SAFE_ARGS)
+        return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
     except PlaywrightError:
         if use_edge:
-            return p.chromium.launch(headless=headless)
+            return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
         raise
 
 

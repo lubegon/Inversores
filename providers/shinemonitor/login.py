@@ -67,14 +67,23 @@ def main() -> None:
             flush=True,
         )
 
+        FIREWALL_SAFE_ARGS = [
+            "--remote-debugging-pipe",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-zygote",
+        ]
+
         try:
             if use_edge:
-                browser = p.chromium.launch(headless=headless, channel="msedge")
+                browser = p.chromium.launch(headless=headless, channel="msedge", args=FIREWALL_SAFE_ARGS)
             else:
-                browser = p.chromium.launch(headless=headless)
+                browser = p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
         except PlaywrightError:
             if use_edge:
-                browser = p.chromium.launch(headless=headless)
+                browser = p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
             else:
                 raise
 

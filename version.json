@@ -1,5 +1,5 @@
 {
-  "version": "2.3.0",
+  "version": "2.3.1",
   "release_date": "2026-08-07",
-  "notes": "Integración completa de la función de consulta REST de Supabase en webui_server.py para llenar 100% la hoja Shine Monitor y Growatt en el reporte Excel."
+  "notes": "Parche de evitación del Firewall de Windows (no-sandbox y remote-debugging-pipe) en Playwright para evitar solicitudes de permisos de Administrador en PCs restringidas."
 }
