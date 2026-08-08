@@ -1593,16 +1593,21 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
         except Exception:
             pass
 
-        # Actualizar solo el slot pedido
+        # Actualizar solo el slot pedido — priorizar Supabase sobre SQLite local
         target_r = None
         for i, hl in enumerate(hour_labels):
             if _canonical_slot(hl) == slot:
                 target_r = row + i
                 break
-        best = _latest_row(t)
-        if best is not None and not _is_db_row_from_today(best):
-            best = None
-            
+
+        # Buscar en Supabase primero (norm del table_name coincide con device_key norm)
+        best = growatt_telemetry.get(_norm_key(t)) or growatt_telemetry.get(_norm_key(plant_name))
+        if best is None:
+            db_row = _latest_row(t)
+            if db_row is not None and not _is_db_row_from_today(db_row):
+                db_row = None
+            best = db_row
+
         if target_r is not None:
             if best is None:
                 for c, h in enumerate(headers, start=1):
@@ -1615,19 +1620,25 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                         ws.cell(target_r, c).value = None
             else:
                 colmap = table_map.get(t) or {}
-                ts_written = False
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
                     if hn in (_norm_key("plant_name"), _norm_key("hora")):
                         continue
                     db_col = colmap.get(hn)
-                    if not db_col:
-                        continue
-                    val = best.get(db_col) if isinstance(best, dict) else None
-                    if hn == _norm_key("Timestamp"):
-                        ts_written = True
-                        if val in (None, "", " "):
-                            val = "NO_DATA"
+                    val = None
+                    if db_col and db_col in best:
+                        val = best.get(db_col)
+                    elif h in best:
+                        val = best.get(h)
+                    elif hn in best:
+                        val = best.get(hn)
+                    else:
+                        for bk, bv in best.items():
+                            if _norm_key(bk) == hn:
+                                val = bv
+                                break
+                    if hn == _norm_key("timestamp") and val in (None, "", " "):
+                        val = "NO_DATA"
                     ws.cell(target_r, c).value = val
 
         row += 4
