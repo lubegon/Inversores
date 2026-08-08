@@ -1,5 +1,5 @@
 {
-  "version": "2.3.5",
+  "version": "2.3.6",
   "release_date": "2026-08-08",
-  "notes": "Corrección en el sistema de auto-actualizaciones: añadido parámetro dinámico anti-caché (cache buster) para evitar retrasos de CDN en GitHub, y banners dinámicos de versión en los archivos batch de inicio."
+  "notes": "Actualizaci\u00c3\u00b3n de estados en tiempo real para el enlace con Supabase (Conectado, Desconectado, Transmitiendo de subida/bajada y Error)."
 }

@@ -481,10 +481,44 @@ async function initDashboard(config) {
       // Actualizar tarjeta de métrica de Supabase
       if (hmSupabase) {
         if (status.enabled && status.connected) {
-          hmSupabase.innerHTML = `<span class="status-dot idle"></span> Conectado`;
+          let stateText = 'Conectado';
+          let dotCls = 'idle'; // verde
+          let iconName = 'cloud';
+          let iconColor = '#60a5fa'; // azul
+          
+          if (Array.isArray(status.activities) && status.activities.length > 0) {
+            const lastAct = status.activities[0];
+            const actTime = new Date(lastAct.timestamp).getTime();
+            const nowTime = Date.now();
+            const secDiff = (nowTime - actTime) / 1000;
+            
+            // Si la actividad es reciente (menos de 12 segundos)
+            if (secDiff < 12 && secDiff >= 0) {
+              if (lastAct.status === 'error') {
+                stateText = 'Error de Enlace';
+                dotCls = 'error'; // rojo
+                iconName = 'alert-triangle';
+                iconColor = '#ef4444'; // rojo
+              } else {
+                if (['insert_telemetry', 'upsert_plant', 'upsert_device', 'upload_report', 'insert_event'].includes(lastAct.action)) {
+                  stateText = 'Transmitiendo (Subida)';
+                  dotCls = 'running'; // naranja pulsante
+                  iconName = 'upload-cloud';
+                  iconColor = '#f59e0b'; // naranja/ámbar
+                } else if (['fetch_telemetry', 'get_download_url'].includes(lastAct.action)) {
+                  stateText = 'Transmitiendo (Bajada)';
+                  dotCls = 'running'; // naranja pulsante
+                  iconName = 'download-cloud';
+                  iconColor = '#10b981'; // esmeralda/verde
+                }
+              }
+            }
+          }
+          
+          hmSupabase.innerHTML = `<span class="status-dot ${dotCls}"></span> ${stateText}`;
           if (sbStatusIcon) {
-            sbStatusIcon.innerHTML = `<i data-lucide="cloud"></i>`;
-            sbStatusIcon.style.color = '#60a5fa';
+            sbStatusIcon.innerHTML = `<i data-lucide="${iconName}"></i>`;
+            sbStatusIcon.style.color = iconColor;
           }
         } else {
           hmSupabase.innerHTML = `<span class="status-dot error"></span> Desconectado`;
