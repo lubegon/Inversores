@@ -179,10 +179,9 @@ function createProviderCard(provider, templateId) {
     if (!status?.running) return;
     const out = await apiGet(`/api/log?provider=${encodeURIComponent(provider.key)}&pos=${pos}`);
     if (out.text) {
-      const atBottom = (logEl.scrollTop + logEl.clientHeight) >= (logEl.scrollHeight - 20);
       logEl.textContent += out.text;
       pos = out.pos;
-      if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+      logEl.scrollTop = logEl.scrollHeight;
     }
   }
 

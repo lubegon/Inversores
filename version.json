@@ -1,5 +1,5 @@
 {
-  "version": "2.2.5",
+  "version": "2.2.6",
   "release_date": "2026-08-07",
-  "notes": "Corrección de la firma save_telemetry_reading con soporte flexible de keyword arguments (plant_id, raw_data) para transmisión limpia a Supabase."
+  "notes": "Corrección de auto-scroll en la consola del WebUI para reflejar avance continuo de plantas en el Dashboard Web."
 }
