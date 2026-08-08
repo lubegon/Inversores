@@ -194,9 +194,16 @@ def check_for_updates() -> bool:
     """
     local_ver = get_local_version()
     try:
+        import time
+        cache_buster = f"?t={int(time.time())}"
+        url = REMOTE_VERSION_URL + cache_buster
         req = urllib.request.Request(
-            REMOTE_VERSION_URL,
-            headers={"User-Agent": "Voltguard-VersionCheck/2.0"}
+            url,
+            headers={
+                "User-Agent": "Voltguard-VersionCheck/2.0",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache"
+            }
         )
         raw_bytes = _urlopen_with_ssl_fallback(req, timeout=10)
         data = json.loads(raw_bytes.decode("utf-8"))
@@ -214,4 +221,6 @@ def check_for_updates() -> bool:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logger.setLevel(logging.INFO)
     check_for_updates()

@@ -4,8 +4,14 @@ chcp 65001 > nul
 rem Desactivar verificacion estricta SSL en Python para evitar bloqueos en Windows
 set PYTHONHTTPSVERIFY=0
 title Iniciar Servidor - Captura de Inversores
+set "SYS_VER=2.3.4"
+if exist version.json (
+    for /f "tokens=2 delims=:," %%A in ('findstr "version" version.json') do set "SYS_VER=%%~A"
+)
+set "SYS_VER=%SYS_VER: =%"
+set "SYS_VER=%SYS_VER:"=%"
 echo ======================================================================
-echo       INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES (v2.3.4)
+echo       INICIALIZACION DEL SISTEMA - CAPTURA DE INVERSORES (v%SYS_VER%)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.
@@ -160,7 +166,7 @@ rem 6. Verificar si existe una nueva version en GitHub
 rem 7. Iniciar Servidor
 cls
 echo ======================================================================
-echo       SISTEMA DE CAPTURA DE INVERSORES (v2.3.3)
+echo       SISTEMA DE CAPTURA DE INVERSORES (v%SYS_VER%)
 echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.

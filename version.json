@@ -1,5 +1,5 @@
 {
-  "version": "2.3.4",
+  "version": "2.3.5",
   "release_date": "2026-08-08",
-  "notes": "Integración de indicador de versión en Dashboard principal, panel de monitoreo y feed en tiempo real de Supabase utilizando íconos estilizados tipo Lucide/Framer."
+  "notes": "Corrección en el sistema de auto-actualizaciones: añadido parámetro dinámico anti-caché (cache buster) para evitar retrasos de CDN en GitHub, y banners dinámicos de versión en los archivos batch de inicio."
 }
