@@ -44,6 +44,10 @@ def _get_version() -> str:
         return "1.0.0"
 
 
+DEFAULT_SUPABASE_URL = "https://zlepfamahxmplaocfcwx.supabase.co"
+DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsZXBmYW1haHhtcGxhb2NmY3d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNDcwMDMsImV4cCI6MjEwMTYyMzAwM30.JU3NLceSoNLZ434yM0X32IQjPB5_RLG_wEArTQ7EFHE"
+
+
 class SupabaseManager:
     """Administrador centralizado de la conexion e ingesta de datos con Supabase.
     
@@ -58,6 +62,12 @@ class SupabaseManager:
         self.url: str = os.getenv("SUPABASE_URL", "").strip()
         self.key: str = os.getenv("SUPABASE_KEY", "").strip()
         self.bucket_name: str = os.getenv("SUPABASE_STORAGE_BUCKET", "reports").strip()
+
+        if not self.url or "tu-proyecto" in self.url:
+            self.url = DEFAULT_SUPABASE_URL
+        if not self.key or "tu-anon" in self.key:
+            self.key = DEFAULT_SUPABASE_KEY
+
         self.client: Client | None = None
         self._disabled_warned: bool = False
 

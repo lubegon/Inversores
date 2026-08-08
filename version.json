@@ -1,5 +1,5 @@
 {
-  "version": "2.2.6",
+  "version": "2.2.7",
   "release_date": "2026-08-07",
-  "notes": "Corrección de auto-scroll en la consola del WebUI para reflejar avance continuo de plantas en el Dashboard Web."
+  "notes": "Inclusión de fallback por defecto de credenciales Supabase para garantizar ingesta en vivo independiente del archivo .env."
 }
