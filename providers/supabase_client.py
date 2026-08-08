@@ -15,6 +15,10 @@ except ImportError:
     HAS_SUPABASE_LIB = False
     Client = Any
 
+import json
+import ssl
+import urllib.request
+
 logger = logging.getLogger("supabase_client")
 
 
@@ -48,6 +52,54 @@ DEFAULT_SUPABASE_URL = "https://zlepfamahxmplaocfcwx.supabase.co"
 DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsZXBmYW1haHhtcGxhb2NmY3d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNDcwMDMsImV4cCI6MjEwMTYyMzAwM30.JU3NLceSoNLZ434yM0X32IQjPB5_RLG_wEArTQ7EFHE"
 
 
+class _UrllibSupabaseTable:
+    def __init__(self, manager: SupabaseManager, table_name: str) -> None:
+        self.manager = manager
+        self.table_name = table_name
+        self._payload: Any = None
+        self._action: str = "POST"
+        self._on_conflict: str | None = None
+
+    def insert(self, payload: dict | list) -> _UrllibSupabaseTable:
+        self._payload = payload
+        self._action = "POST"
+        self._on_conflict = None
+        return self
+
+    def upsert(self, payload: dict | list, on_conflict: str | None = None) -> _UrllibSupabaseTable:
+        self._payload = payload
+        self._action = "POST"
+        self._on_conflict = on_conflict
+        return self
+
+    def execute(self) -> Any:
+        url = f"{self.manager.url.rstrip('/')}/rest/v1/{self.table_name}"
+        if self._on_conflict:
+            url += f"?on_conflict={self._on_conflict}"
+
+        headers = {
+            "apikey": self.manager.key,
+            "Authorization": f"Bearer {self.manager.key}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates" if self._on_conflict else "return=minimal",
+        }
+
+        data_bytes = json.dumps([self._payload] if isinstance(self._payload, dict) else self._payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data_bytes, headers=headers, method=self._action)
+
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            return resp.read()
+
+
+class _UrllibSupabaseClient:
+    def __init__(self, manager: SupabaseManager) -> None:
+        self.manager = manager
+
+    def table(self, table_name: str) -> _UrllibSupabaseTable:
+        return _UrllibSupabaseTable(self.manager, table_name)
+
+
 class SupabaseManager:
     """Administrador centralizado de la conexion e ingesta de datos con Supabase.
     
@@ -68,18 +120,21 @@ class SupabaseManager:
         if not self.key or "tu-anon" in self.key:
             self.key = DEFAULT_SUPABASE_KEY
 
-        self.client: Client | None = None
+        self.client: Any = None
         self._disabled_warned: bool = False
 
         if HAS_SUPABASE_LIB and self.url and self.key:
             try:
                 self.client = create_client(self.url, self.key)
             except Exception as exc:
-                logger.warning(f"No se pudo inicializar el cliente Supabase: {exc}")
+                logger.warning(f"No se pudo inicializar cliente Supabase oficial: {exc}")
+                self.client = _UrllibSupabaseClient(self)
+        elif self.url and self.key:
+            self.client = _UrllibSupabaseClient(self)
 
     @classmethod
     def get_instance(cls) -> SupabaseManager:
-        if cls._instance is None:
+        if cls._instance is None or cls._instance.client is None:
             cls._instance = SupabaseManager()
         return cls._instance
 

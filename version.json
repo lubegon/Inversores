@@ -1,5 +1,5 @@
 {
-  "version": "2.2.7",
+  "version": "2.2.8",
   "release_date": "2026-08-07",
-  "notes": "Inclusión de fallback por defecto de credenciales Supabase para garantizar ingesta en vivo independiente del archivo .env."
+  "notes": "Integración de cliente REST nativo (urllib) para conexión resiliente a Supabase en migrate_to_supabase.py sin depender de paquetes externos."
 }

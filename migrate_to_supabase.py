@@ -16,18 +16,44 @@ from dotenv import load_dotenv
 
 # Cargar entorno
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(dotenv_path=BASE_DIR / ".env")
+load_dotenv(dotenv_path=BASE_DIR / ".env", override=True)
+load_dotenv(dotenv_path=BASE_DIR.parent / ".env", override=True)
 
 from providers.supabase_client import get_supabase
 
 
 def _find_db(base_dir: Path, filename: str) -> Path | None:
-    path1 = base_dir / filename
-    if path1.exists():
-        return path1
-    path2 = base_dir / "Captura_Inversores_Deploy" / filename
-    if path2.exists():
-        return path2
+    candidates = [
+        base_dir / filename,
+        base_dir / "storage" / filename,
+        base_dir / "Captura_Inversores_Deploy" / filename,
+        base_dir / "Captura_Inversores_Deploy" / "storage" / filename,
+    ]
+    name_lower = filename.lower()
+    if "shinemonitor" in name_lower:
+        candidates.extend([
+            base_dir / "storage" / "shinemonitor.sqlite",
+            base_dir / "shinemonitor.sqlite",
+            base_dir / "Captura_Inversores_Deploy" / "storage" / "shinemonitor.sqlite",
+            base_dir / "Captura_Inversores_Deploy" / "shinemonitor.sqlite",
+        ])
+    if "growatt" in name_lower:
+        candidates.extend([
+            base_dir / "storage" / "growatt.sqlite",
+            base_dir / "growatt.sqlite",
+            base_dir / "Captura_Inversores_Deploy" / "storage" / "growatt.sqlite",
+            base_dir / "Captura_Inversores_Deploy" / "growatt.sqlite",
+        ])
+    if "values" in name_lower:
+        candidates.extend([
+            base_dir / "storage" / "values.sqlite",
+            base_dir / "values.sqlite",
+            base_dir / "Captura_Inversores_Deploy" / "storage" / "values.sqlite",
+            base_dir / "Captura_Inversores_Deploy" / "values.sqlite",
+        ])
+    for c in candidates:
+        if c.exists():
+            return c
     return None
 
 
