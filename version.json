@@ -1,5 +1,5 @@
 {
-  "version": "2.3.6",
+  "version": "2.3.7",
   "release_date": "2026-08-08",
-  "notes": "Actualización de estados en tiempo real para el enlace con Supabase (Conectado, Desconectado, Transmitiendo de subida/bajada y Error)."
+  "notes": "Corrección de DeprecationWarning de datetime.utcnow() y mejora del manejo de errores 403 RLS en Supabase Storage."
 }

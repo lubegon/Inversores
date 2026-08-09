@@ -300,7 +300,11 @@ class SupabaseManager:
             return False
 
     def upload_report_file(self, file_path: str | Path, destination_name: str | None = None) -> str | None:
-        """Sube un archivo de reporte (Excel/CSV) a Supabase Storage y retorna su URL publica/firmada."""
+        """Sube un archivo de reporte (Excel/CSV) a Supabase Storage y retorna su URL publica/firmada.
+
+        Usa la API REST directa de Supabase Storage con x-upsert:true para evitar
+        problemas de RLS del SDK de Python. Hace fallback al SDK si falla.
+        """
         if not self.is_enabled():
             return None
         path = Path(file_path)
@@ -310,25 +314,69 @@ class SupabaseManager:
             return None
 
         dest = destination_name or path.name
+        content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if str(dest).lower().endswith(".csv"):
+            content_type = "text/csv"
+
         try:
             with open(path, "rb") as f:
                 file_bytes = f.read()
 
-            # Subir o reemplazar archivo en el bucket
-            res = self.client.storage.from_(self.bucket_name).upload(
-                path=dest,
-                file=file_bytes,
-                file_options={"upsert": "true", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+            # Método 1: REST directo con urllib (evita bugs de RLS del SDK)
+            import urllib.request as _urlreq
+            import ssl as _ssl
+            storage_url = f"{self.url.rstrip('/')}/storage/v1/object/{self.bucket_name}/{dest}"
+            req = _urlreq.Request(
+                storage_url,
+                data=file_bytes,
+                method="POST",
+                headers={
+                    "Authorization": f"Bearer {self.key}",
+                    "apikey": self.key,
+                    "Content-Type": content_type,
+                    "x-upsert": "true",
+                },
             )
+            ctx = _ssl._create_unverified_context()
+            try:
+                with _urlreq.urlopen(req, timeout=20, context=ctx) as resp:
+                    resp.read()  # consumir respuesta
+            except Exception as rest_err:
+                # Si el REST falla (ej: 400 ya existe), intentar PUT para upsert
+                if "400" in str(rest_err) or "already" in str(rest_err).lower():
+                    req2 = _urlreq.Request(
+                        storage_url,
+                        data=file_bytes,
+                        method="PUT",
+                        headers={
+                            "Authorization": f"Bearer {self.key}",
+                            "apikey": self.key,
+                            "Content-Type": content_type,
+                            "x-upsert": "true",
+                        },
+                    )
+                    with _urlreq.urlopen(req2, timeout=20, context=ctx) as resp2:
+                        resp2.read()
+                else:
+                    raise
 
-            # Intentar obtener URL publica
+            # Obtener URL pública
             public_url = self.client.storage.from_(self.bucket_name).get_public_url(dest)
             logger.info(f"[Supabase Storage] Reporte subido exitosamente: {public_url}")
-            log_supabase_activity("upload_report", "success", f"Reporte {dest} subido exitosamente", "webui")
+            log_supabase_activity("upload_report", "success", f"Reporte {dest} subido", "webui")
             return public_url
         except Exception as exc:
-            logger.error(f"[Supabase Storage] Error subiendo reporte {dest}: {exc}")
-            log_supabase_activity("upload_report", "error", f"Error subiendo {dest}: {exc}", "webui")
+            err_msg = str(exc)
+            if "403" in err_msg or "Unauthorized" in err_msg or "row-level security" in err_msg.lower():
+                logger.error(
+                    f"[Supabase Storage] Error 403 RLS al subir '{dest}'. "
+                    f"Ve a Supabase Dashboard → Storage → {self.bucket_name} → Policies "
+                    f"y agrega una policy de INSERT para el rol 'anon'."
+                )
+                log_supabase_activity("upload_report", "error", f"Error 403 RLS: el bucket '{self.bucket_name}' requiere policy de INSERT para anon", "webui")
+            else:
+                logger.error(f"[Supabase Storage] Error subiendo reporte {dest}: {exc}")
+                log_supabase_activity("upload_report", "error", f"Error subiendo {dest}: {exc}", "webui")
             return None
 
     def get_report_download_url(self, filename: str) -> str | None:

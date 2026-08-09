@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hmac
 import json
 import os
@@ -1837,7 +1837,7 @@ def _generate_or_update_report(*, slot: str) -> Path:
             st = REPORT_PATH.stat()
             mtime_date = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d")
             local_today = datetime.now().strftime("%Y-%m-%d")
-            utc_today = datetime.utcnow().strftime("%Y-%m-%d")
+            utc_today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             allowed = {local_today, utc_today}
             try:
                 from zoneinfo import ZoneInfo
