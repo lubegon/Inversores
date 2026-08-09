@@ -1,5 +1,5 @@
 {
-  "version": "2.3.7",
+  "version": "2.3.8",
   "release_date": "2026-08-08",
-  "notes": "Corrección de DeprecationWarning de datetime.utcnow() y mejora del manejo de errores 403 RLS en Supabase Storage."
+  "notes": "Soporte para SUPABASE_SERVICE_KEY en .env para subir reportes sin restricciones RLS. El bucket 'reports' se configura automáticamente como público al iniciar si el service key está disponible."
 }

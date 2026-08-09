@@ -131,6 +131,8 @@ class SupabaseManager:
     def __init__(self) -> None:
         self.url: str = os.getenv("SUPABASE_URL", "").strip()
         self.key: str = os.getenv("SUPABASE_KEY", "").strip()
+        # service_role key omite RLS — necesario para Storage si el bucket no es público
+        self.service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
         self.bucket_name: str = os.getenv("SUPABASE_STORAGE_BUCKET", "reports").strip()
 
         if not self.url or "tu-proyecto" in self.url:
@@ -150,6 +152,10 @@ class SupabaseManager:
         elif self.url and self.key:
             self.client = _UrllibSupabaseClient(self)
 
+        # Si hay service_role key disponible, intentar hacer el bucket público al inicio
+        if self.client and self.service_key:
+            self._ensure_bucket_public()
+
     @classmethod
     def get_instance(cls) -> SupabaseManager:
         if cls._instance is None or cls._instance.client is None:
@@ -158,6 +164,35 @@ class SupabaseManager:
 
     def is_enabled(self) -> bool:
         return self.client is not None
+
+    @property
+    def _storage_auth_key(self) -> str:
+        """Retorna el mejor key disponible para operaciones de Storage.
+        Prefiere service_role (sin RLS) sobre anon (con RLS)."""
+        return self.service_key if self.service_key else self.key
+
+    def _ensure_bucket_public(self) -> None:
+        """Intenta hacer el bucket público usando el service_role key.
+        Solo se ejecuta si service_key está disponible."""
+        if not self.service_key:
+            return
+        try:
+            import urllib.request as _r, ssl as _s, json as _j
+            ctx = _s._create_unverified_context()
+            body = _j.dumps({"public": True}).encode()
+            req = _r.Request(
+                f"{self.url.rstrip('/')}/storage/v1/bucket/{self.bucket_name}",
+                data=body, method="PUT",
+                headers={
+                    "Authorization": f"Bearer {self.service_key}",
+                    "apikey": self.service_key,
+                    "Content-Type": "application/json",
+                },
+            )
+            with _r.urlopen(req, timeout=8, context=ctx):
+                logger.info(f"[Supabase Storage] Bucket '{self.bucket_name}' configurado como público.")
+        except Exception:
+            pass  # Silencioso — no es crítico
 
     def _log_unconfigured_once(self) -> None:
         pass
@@ -331,8 +366,8 @@ class SupabaseManager:
                 data=file_bytes,
                 method="POST",
                 headers={
-                    "Authorization": f"Bearer {self.key}",
-                    "apikey": self.key,
+                    "Authorization": f"Bearer {self._storage_auth_key}",
+                    "apikey": self._storage_auth_key,
                     "Content-Type": content_type,
                     "x-upsert": "true",
                 },
@@ -349,8 +384,8 @@ class SupabaseManager:
                         data=file_bytes,
                         method="PUT",
                         headers={
-                            "Authorization": f"Bearer {self.key}",
-                            "apikey": self.key,
+                            "Authorization": f"Bearer {self._storage_auth_key}",
+                            "apikey": self._storage_auth_key,
                             "Content-Type": content_type,
                             "x-upsert": "true",
                         },
