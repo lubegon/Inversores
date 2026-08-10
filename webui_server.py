@@ -2073,16 +2073,18 @@ def _parse_shinemonitor_fail_plants_full(log_path: Path) -> set[str]:
 
 
 def _parse_shinemonitor_fail_plants_incremental(job: Job) -> set[str]:
-    """Devuelve plant_ids marcadas como fallo (NO_TABLE/NO_TAB) desde el log.
+    """Devuelve plant_ids marcadas como fallo (NO_TABLE/NO_TAB/Sin datos hoy) desde el log.
 
     Lee incrementalmente desde job.log_parse_pos para no re-scanear todo el archivo.
+    Mantiene un conjunto acumulado en job.sm_fail_plants.
     """
+    if not hasattr(job, "sm_fail_plants") or job.sm_fail_plants is None:
+        job.sm_fail_plants = set()
 
-    fails: set[str] = set()
     try:
         path = job.log_path
         if not path.exists():
-            return fails
+            return job.sm_fail_plants
         size = path.stat().st_size
         start = int(job.log_parse_pos or 0)
         if start < 0 or start > size:
@@ -2093,18 +2095,19 @@ def _parse_shinemonitor_fail_plants_incremental(job: Job) -> set[str]:
             chunk = f.read()
             job.log_parse_pos = f.tell()
 
-        current_plant: str | None = None
+        current_plant: str | None = getattr(job, "_last_sm_plant", None)
         for line in chunk.splitlines():
             m = _re_sm_plant.search(line)
             if m:
                 current_plant = m.group(1)
+                job._last_sm_plant = current_plant
 
             if _re_sm_fail.search(line):
                 if current_plant:
-                    fails.add(current_plant)
+                    job.sm_fail_plants.add(current_plant)
     except Exception:
-        return fails
-    return fails
+        pass
+    return job.sm_fail_plants
 
 
 def _hour_bucket(ts: float) -> int:
