@@ -1,5 +1,5 @@
 {
-  "version": "2.9.7",
+  "version": "2.9.8",
   "release_date": "2026-08-10",
-  "notes": "Correccion critica del falso timeout de TREE_NOT_LOADED generalizado. Se aumento el tiempo de espera del clic a 15 segundos para dar tiempo a que desaparezca la ruleta de carga de la web."
+  "notes": "Correccion del selector del arbol para cuentas de administrador (plantMgrTree vs plant_tree) y soporte de URL managesystemnew."
 }

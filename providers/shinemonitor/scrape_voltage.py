@@ -353,13 +353,14 @@ def _ensure_tree_loaded(
     debug_name: str = "tree-load-error",
 ) -> Locator:
 
-    tree = page.locator("#plant_tree")
+    tree_selectors = "#plant_tree, #plantMgrTree"
+    tree = page.locator(tree_selectors).first
 
     for attempt in range(retries + 1):
         try:
             tree.wait_for(state="attached", timeout=timeout_ms)
             page.wait_for_selector(
-                "#plant_tree li.jstree-node",
+                "#plant_tree li.jstree-node, #plantMgrTree li.jstree-node",
                 state="attached",
                 timeout=timeout_ms,
             )
@@ -469,7 +470,7 @@ def _select_plant_and_load_tree(
 
     # Destruir limpia e higiénicamente la instancia jstree de la planta anterior
     try:
-        page.evaluate("() => { if (window.$ && $.jstree) { try { $.jstree.reference('#plant_tree').destroy(); } catch (_) {} } }")
+        page.evaluate("() => { if (window.$ && $.jstree) { try { $.jstree.reference('#plant_tree').destroy(); } catch (_) {} try { $.jstree.reference('#plantMgrTree').destroy(); } catch (_) {} } }")
     except Exception:
         pass
 
@@ -490,7 +491,8 @@ def _select_plant_and_load_tree(
 
     if not is_main:
         try:
-            page.wait_for_url("**/main.html*", timeout=15_000)
+            import re
+            page.wait_for_url(re.compile(r".*(main\.html|index\.html).*"), timeout=15_000)
         except Exception:
             pass
 
