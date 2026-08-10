@@ -4265,6 +4265,18 @@ class Handler(BaseHTTPRequestHandler):
                 _json_response(self, 500, {"ok": False, "error": str(e)})
             return
 
+        if path in ("/api/system-logs/clear", "/api/system-logs-clear"):
+            try:
+                from providers.system_logger import SystemLogger
+                logger_inst = SystemLogger.get_instance()
+                with logger_inst._lock:
+                    if logger_inst.session_file and logger_inst.session_file.exists():
+                        logger_inst.session_file.write_text("", encoding="utf-8")
+                _json_response(self, 200, {"ok": True})
+            except Exception as e:
+                _json_response(self, 500, {"ok": False, "error": str(e)})
+            return
+
         if path == "/api/supabase/status":
             try:
                 from providers.supabase_client import get_supabase, log_supabase_activity

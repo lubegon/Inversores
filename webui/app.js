@@ -649,7 +649,10 @@ async function initDashboard(config) {
     refreshSyslogBtn.addEventListener('click', () => pollSystemLogs());
   }
   if (clearSyslogBtn) {
-    clearSyslogBtn.addEventListener('click', () => {
+    clearSyslogBtn.addEventListener('click', async () => {
+      try {
+        await apiGet('/api/system-logs/clear');
+      } catch (_) { }
       rawSyslogLines = [];
       renderSystemLogs();
     });
