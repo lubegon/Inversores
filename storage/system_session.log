@@ -1,2 +1,2 @@
-[2026-08-10 00:12:49] [INFO] [system_logger] [SUPABASE] [UPSERT_PLANT] Planta RBS Mecedores guardada (shinemonitor)
-[2026-08-10 00:13:19] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 214436: RBS Mecedores: No hay Inverter en este Monitor (shinemonitor)
+[2026-08-10 00:22:48] [INFO] [system_logger] [SUPABASE] [UPSERT_PLANT] Planta RBS Mecedores guardada (shinemonitor)
+[2026-08-10 00:23:18] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 214436: RBS Mecedores: No hay Inverter en este Monitor (shinemonitor)

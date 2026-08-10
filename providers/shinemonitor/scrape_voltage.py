@@ -449,6 +449,12 @@ def _select_plant_and_load_tree(
     except Exception:
         pass
 
+    # Destruir limpia e higiénicamente la instancia jstree de la planta anterior
+    try:
+        page.evaluate("() => { if (window.$ && $.jstree) { try { $.jstree.reference('#plant_tree').destroy(); } catch (_) {} } }")
+    except Exception:
+        pass
+
     try:
         page.evaluate(f"try {{ if (typeof currIndex !== 'undefined') currIndex = 3; }} catch (_) {{}}; getPlantId('plant_{plant.plant_id}');")
     except Exception:
