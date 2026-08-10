@@ -1,5 +1,5 @@
 {
-  "version": "2.4.0",
+  "version": "2.4.1",
   "release_date": "2026-08-09",
-  "notes": "Corrección de reporte Excel ShineMonitor, incorporación de logger centralizado del sistema desde .bat, purga de 3 días en Supabase y sincronización con GitHub."
+  "notes": "Corrección de sintaxis en providers/supabase_client.py para restablecer el estado 'Conectado' de Supabase Link en el Dashboard WebUI."
 }

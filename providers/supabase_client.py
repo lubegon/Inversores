@@ -427,6 +427,12 @@ class SupabaseManager:
             # Fallback a URL pública
             url = self.client.storage.from_(self.bucket_name).get_public_url(filename)
             log_supabase_activity("get_download_url", "success", f"Generada URL pública para {filename}", "webui")
+            return url
+        except Exception as exc:
+            logger.error(f"[Supabase Storage] Error obteniendo URL para {filename}: {exc}")
+            log_supabase_activity("get_download_url", "error", f"Error obteniendo URL para {filename}: {exc}", "webui")
+            return None
+
     def clean_old_records(self, days_to_keep: int = 3) -> bool:
         """Elimina lecturas telemétricas y eventos de Supabase con más de X días de antigüedad."""
         if not self.is_enabled():
