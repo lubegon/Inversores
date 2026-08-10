@@ -2050,8 +2050,9 @@ _re_vals_nodata = re.compile(r"\bNO DATA:", re.IGNORECASE)
 _re_vals_warn_retry = re.compile(r"\bWARN:\s*fallo\s+intento\b|\breintento\b", re.IGNORECASE)
 _re_vals_err = re.compile(r"\bERROR:\b", re.IGNORECASE)
 
-_re_sm_item = re.compile(r"^\[(\d+)\s*/\s*(\d+)\]\s*Plant\s+(\d+)", re.IGNORECASE)
+_re_sm_item = re.compile(r"Plant\s+(\d+)", re.IGNORECASE)
 _re_sm_no_inv = re.compile(r"\bNO_INVERTER\b", re.IGNORECASE)
+_re_sm_ok = re.compile(r"->\s*OK\b|\[OK\]\s*Plant\s+(\d+)", re.IGNORECASE)
 
 
 def _parse_shinemonitor_fail_plants_full(log_path: Path) -> set[str]:
@@ -2539,9 +2540,9 @@ def _update_job_live_grid(provider: str, job: Job) -> None:
                         continue
 
                 elif provider == "shinemonitor":
-                    m = _re_sm_item.search(line)
-                    if m:
-                        plant_id = str(m.group(3))
+                    m_item = _re_sm_item.search(line)
+                    if m_item:
+                        plant_id = str(m_item.group(1))
 
                         # Al entrar en una nueva planta, evaluar la anterior contra SQLite.
                         prev = job.grid_current
@@ -2556,17 +2557,27 @@ def _update_job_live_grid(provider: str, job: Job) -> None:
                                 if ok is True:
                                     _grid_set_status(job, prev, "ok")
                                 elif ok is False:
-                                    # Si no insertó nada OK, marcar fail al cerrar la planta.
                                     if (job.grid_status.get(prev) or "pending") not in ("fail",):
                                         _grid_set_status(job, prev, "fail")
                             except Exception:
                                 pass
 
                         _grid_switch_current(job, plant_id)
+
+                    m_ok = _re_sm_ok.search(line)
+                    if m_ok:
+                        pid = m_ok.group(1) or job.grid_current
+                        if pid:
+                            _grid_set_status(job, str(pid), "ok")
                         continue
 
-                    if _re_sm_fail.search(line) and job.grid_current:
-                        _grid_set_status(job, job.grid_current, "fail")
+                    if _re_sm_fail.search(line):
+                        pid = job.grid_current
+                        m_plant = _re_sm_plant.search(line)
+                        if m_plant:
+                            pid = m_plant.group(1)
+                        if pid:
+                            _grid_set_status(job, str(pid), "fail")
                         continue
 
                     if _re_sm_no_inv.search(line) and job.grid_current:

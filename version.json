@@ -1,5 +1,5 @@
 {
-  "version": "2.10.7",
+  "version": "2.10.8",
   "release_date": "2026-08-10",
-  "notes": "Feature: Cronómetro de duración en tiempo real (y tiempo total al finalizar) para todos los proveedores (Shinemonitor, Growatt, Values)."
+  "notes": "Fix: Actualización inmediata de celdas OK (verde) vs FAIL (rojo) en vivo durante el raspado de Shinemonitor."
 }
