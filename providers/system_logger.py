@@ -98,3 +98,13 @@ def get_recent_logs(lines_count: int = 200) -> list[str]:
         return content[-lines_count:]
     except Exception as exc:
         return [f"Error leyendo archivo de logs: {exc}"]
+
+
+def clear_session_logs() -> bool:
+    try:
+        if SESSION_LOG_PATH.exists():
+            with open(SESSION_LOG_PATH, "w", encoding="utf-8") as f:
+                f.write("")
+        return True
+    except Exception:
+        return False

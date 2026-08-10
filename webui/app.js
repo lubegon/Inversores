@@ -667,16 +667,21 @@ async function initDashboard(config) {
     });
   }
 
-  if (refreshSyslogBtn) {
-    refreshSyslogBtn.addEventListener('click', () => pollSystemLogs());
-  }
   if (clearSyslogBtn) {
     clearSyslogBtn.addEventListener('click', async () => {
+      syslogCleared = true;
+      rawSyslogLines = [];
+      renderSystemLogs();
       try {
         await apiGet('/api/system-logs/clear');
       } catch (_) { }
-      rawSyslogLines = [];
-      renderSystemLogs();
+    });
+  }
+
+  if (refreshSyslogBtn) {
+    refreshSyslogBtn.addEventListener('click', () => {
+      syslogCleared = false;
+      pollSystemLogs();
     });
   }
   if (filterBtns) {
@@ -704,6 +709,7 @@ async function initDashboard(config) {
 
 let syslogFilter = 'all';
 let rawSyslogLines = [];
+let syslogCleared = false;
 
 async function pollSystemLogs() {
   const consoleEl = $('#syslog-console');
@@ -712,7 +718,17 @@ async function pollSystemLogs() {
   try {
     const res = await apiGet('/api/system-logs');
     if (res && Array.isArray(res.logs)) {
-      rawSyslogLines = res.logs;
+      if (syslogCleared) {
+        if (res.logs.length > 0 && res.logs[res.logs.length - 1] !== rawSyslogLines[rawSyslogLines.length - 1]) {
+          // Hay nuevos logs tras la limpieza
+          syslogCleared = false;
+          rawSyslogLines = res.logs;
+        } else {
+          rawSyslogLines = [];
+        }
+      } else {
+        rawSyslogLines = res.logs;
+      }
       renderSystemLogs();
     }
   } catch (e) {

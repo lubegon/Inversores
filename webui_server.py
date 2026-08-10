@@ -4267,11 +4267,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in ("/api/system-logs/clear", "/api/system-logs-clear"):
             try:
-                from providers.system_logger import SystemLogger
-                logger_inst = SystemLogger.get_instance()
-                with logger_inst._lock:
-                    if logger_inst.session_file and logger_inst.session_file.exists():
-                        logger_inst.session_file.write_text("", encoding="utf-8")
+                from providers.system_logger import clear_session_logs
+                clear_session_logs()
                 _json_response(self, 200, {"ok": True})
             except Exception as e:
                 _json_response(self, 500, {"ok": False, "error": str(e)})
