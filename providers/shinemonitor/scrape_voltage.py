@@ -381,13 +381,26 @@ def _select_plant_and_load_tree(
     *,
     plant: PlantRef,
     run_dir: Path,
+    user: str = "",
+    password: str = "",
+    storage_state_path: Path | None = None,
     timeout_ms: int = 60_000,
     retries: int = 1,
 ) -> tuple[str | None, Locator]:
 
     dropdown = page.locator("span.k-dropdown-wrap").first
-    dropdown.wait_for(state="visible", timeout=timeout_ms)
+    try:
+        dropdown.wait_for(state="visible", timeout=4_000)
+    except Exception:
+        # Si el selector de plantas no está visible (la página navegó fuera o la sesión caducó)
+        page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(300)
+        if user and password:
+            _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
+        dropdown.wait_for(state="visible", timeout=timeout_ms)
+
     dropdown.click()
+    page.wait_for_timeout(300)
 
     item_selector = f"#plant_select_listbox li[data-val='{plant.plant_id}']"
     item = page.locator(item_selector).first
@@ -888,6 +901,9 @@ def main() -> None:
                             page,
                             plant=plant,
                             run_dir=run_dir,
+                            user=user,
+                            password=password,
+                            storage_state_path=storage_state_path,
                             timeout_ms=20_000,
                             retries=1,
                         )
@@ -971,6 +987,9 @@ def main() -> None:
                                         page,
                                         plant=plant,
                                         run_dir=run_dir,
+                                        user=user,
+                                        password=password,
+                                        storage_state_path=storage_state_path,
                                         timeout_ms=20_000,
                                         retries=0,
                                     )
@@ -1081,6 +1100,9 @@ def main() -> None:
                                     page,
                                     plant=plant,
                                     run_dir=run_dir,
+                                    user=user,
+                                    password=password,
+                                    storage_state_path=storage_state_path,
                                     timeout_ms=20_000,
                                     retries=1,
                                 )
