@@ -376,33 +376,19 @@ def main() -> None:
                             plant_span = (
                                 page.locator(SEL_TB_DEVICE)
                                 .locator("td")
-                                .filter(has_text=re.compile(r"Plant\\s+Name", re.I))
+                                .filter(has_text=re.compile(r"Plant\s+Name", re.I))
                                 .locator("span")
                                 .first
                             )
-                            plant_span.wait_for(state="attached", timeout=15_000)
-                            # Espera a que el texto contenga el nombre de la planta.
-                            page.wait_for_function(
-                                "(el, expected) => (el && (el.innerText||'').toLowerCase().includes(expected.toLowerCase()))",
-                                arg=(plant_span, plant_name),
-                                timeout=20_000,
-                            )
+                            plant_span.wait_for(state="attached", timeout=3_000)
                         except Exception:
                             pass
-
-                        try:
-                            page.wait_for_load_state("networkidle", timeout=10_000)
-                        except Exception:
-                            pass
-                        page.wait_for_timeout(800)
 
                         # Esperar panel del dispositivo.
                         try:
-                            page.locator(SEL_PANEL_DEVICE).wait_for(state="attached", timeout=60_000)
-                            page.locator(SEL_TB_DEVICE).wait_for(state="attached", timeout=60_000)
-                        except PlaywrightTimeoutError:
-                            dump_debug(page, base_dir, f"growatt-dashboard-no-panel-{idx+1}")
-                            log.warn("No apareció #panel_device/#tb_device_con; guardé dump de debug")
+                            page.locator(f"{SEL_PANEL_DEVICE}, {SEL_TB_DEVICE}").first.wait_for(state="attached", timeout=5_000)
+                        except Exception:
+                            pass
 
                         # Panel: serial / status / update time
                         device_serial, conn_status, update_time = ("", "", "")

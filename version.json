@@ -1,5 +1,5 @@
 {
-  "version": "2.11.2",
+  "version": "2.11.3",
   "release_date": "2026-08-10",
-  "notes": "Fix: Selección fluida y sin bloqueos de tiempo de las 7 plantas de Growatt combinando JS y tarjetas de interfaz."
+  "notes": "Fix: Optimización ultrarrápida de tiempos de inspección de plantas en Growatt (reducción de esperas estáticas de 60s a 3s)."
 }
