@@ -217,6 +217,28 @@
           </div>
         </section>
 
+        <section class="panel" id="system-logs-panel">
+          <div class="panel-head" style="display: flex; align-items: center; justify-content: space-between;">
+            <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+              <span>🖥️ LOGS DEL SISTEMA Y SUPABASE (Consola en Vivo)</span>
+              <span class="pulse-ring" id="syslog-pulse" style="width: 8px; height: 8px; background: #3b82f6; border-radius: 50%; display: inline-block;"></span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-pro-act" id="btn-refresh-syslog" style="font-size: 0.75rem; padding: 4px 10px;">🔄 Actualizar</button>
+              <button class="btn-pro-act" id="btn-clear-syslog" style="font-size: 0.75rem; padding: 4px 10px;">🧹 Limpiar Visor</button>
+            </div>
+          </div>
+          <div style="margin-top: 14px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 10px;" id="syslog-filters">
+              <button class="syslog-filter-btn active" data-filter="all" style="font-size: 0.75rem; padding: 4px 12px; border-radius: 6px; background: #3b82f6; color: #fff; border: none; cursor: pointer; font-weight: 600;">Todos</button>
+              <button class="syslog-filter-btn" data-filter="SUPABASE" style="font-size: 0.75rem; padding: 4px 12px; border-radius: 6px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; cursor: pointer; font-weight: 600;">☁️ Supabase</button>
+              <button class="syslog-filter-btn" data-filter="SYSTEM" style="font-size: 0.75rem; padding: 4px 12px; border-radius: 6px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; cursor: pointer; font-weight: 600;">⚙️ Sistema</button>
+              <button class="syslog-filter-btn" data-filter="ERROR" style="font-size: 0.75rem; padding: 4px 12px; border-radius: 6px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; cursor: pointer; font-weight: 600;">⚠️ Errores</button>
+            </div>
+            <pre class="feed-container" id="syslog-console" style="max-height: 320px; overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; border-radius: 8px; background: #090d16; color: #38bdf8; padding: 14px; border: 1px solid #1e293b; white-space: pre-wrap; word-break: break-all; line-height: 1.4; margin: 0;">Iniciando visor de logs...</pre>
+          </div>
+        </section>
+
         <section class="panel" id="supabase-live-feed">
           <div class="panel-head">
             <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">

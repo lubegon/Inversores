@@ -114,6 +114,14 @@ def log_supabase_activity(action: str, status: str, detail: str, provider: str =
         }
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+        # Registrar también en el Logger del Sistema (.bat a cierre)
+        try:
+            from providers.system_logger import log_sys_event
+            level = "ERROR" if status == "error" else "INFO"
+            log_sys_event(level, "SUPABASE", f"[{action.upper()}] {detail} ({provider})")
+        except Exception:
+            pass
     except Exception:
         pass
 

@@ -639,6 +639,84 @@ async function initDashboard(config) {
 
   pollSupabaseStatus().catch(() => { });
   setInterval(() => pollSupabaseStatus().catch(() => { }), 3000);
+
+  // Visor de Logs del Sistema (Consola en Vivo)
+  const refreshSyslogBtn = $('#btn-refresh-syslog');
+  const clearSyslogBtn = $('#btn-clear-syslog');
+  const filterBtns = document.querySelectorAll('#syslog-filters .syslog-filter-btn');
+
+  if (refreshSyslogBtn) {
+    refreshSyslogBtn.addEventListener('click', () => pollSystemLogs());
+  }
+  if (clearSyslogBtn) {
+    clearSyslogBtn.addEventListener('click', () => {
+      rawSyslogLines = [];
+      renderSystemLogs();
+    });
+  }
+  if (filterBtns) {
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => {
+          b.classList.remove('active');
+          b.style.background = '#1e293b';
+          b.style.color = '#94a3b8';
+          b.style.border = '1px solid #334155';
+        });
+        btn.classList.add('active');
+        btn.style.background = '#3b82f6';
+        btn.style.color = '#fff';
+        btn.style.border = 'none';
+        syslogFilter = btn.dataset.filter || 'all';
+        renderSystemLogs();
+      });
+    });
+  }
+
+  pollSystemLogs().catch(() => { });
+  setInterval(() => pollSystemLogs().catch(() => { }), 3000);
+}
+
+let syslogFilter = 'all';
+let rawSyslogLines = [];
+
+async function pollSystemLogs() {
+  const consoleEl = $('#syslog-console');
+  if (!consoleEl) return;
+
+  try {
+    const res = await apiGet('/api/system-logs');
+    if (res && Array.isArray(res.logs)) {
+      rawSyslogLines = res.logs;
+      renderSystemLogs();
+    }
+  } catch (e) {
+    if (consoleEl) {
+      consoleEl.textContent = `Error obteniendo logs del sistema: ${e}`;
+    }
+  }
+}
+
+function renderSystemLogs() {
+  const consoleEl = $('#syslog-console');
+  if (!consoleEl) return;
+
+  let lines = rawSyslogLines;
+  if (syslogFilter === 'SUPABASE') {
+    lines = lines.filter(l => l.includes('[SUPABASE]'));
+  } else if (syslogFilter === 'SYSTEM') {
+    lines = lines.filter(l => l.includes('[SYSTEM]'));
+  } else if (syslogFilter === 'ERROR') {
+    lines = lines.filter(l => l.includes('[ERROR]') || l.includes('ERROR') || l.includes('Exception') || l.includes('Traceback'));
+  }
+
+  if (lines.length === 0) {
+    consoleEl.textContent = 'Sin registros para este filtro.';
+    return;
+  }
+
+  consoleEl.textContent = lines.join('\n');
+  consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 
 async function initProviders(config) {
