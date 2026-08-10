@@ -739,10 +739,23 @@ def _ensure_grid_data(
 
     rows_loc = grid.locator("tbody > tr")
 
+    import time
     for attempt in range(1, attempts + 1):
         try:
-
-            rows_loc.first.wait_for(state="visible", timeout=timeout_ms)
+            end_time = time.time() + (timeout_ms / 1000.0)
+            while time.time() < end_time:
+                if rows_loc.count() > 0 and rows_loc.first.is_visible():
+                    break
+                
+                err_msg = page.locator("#invDetailCue, div.faultInfo").first
+                if err_msg.is_visible():
+                    text = (err_msg.inner_text() or "").lower()
+                    if "no detail data" in text or "no data" in text:
+                        raise RuntimeError("NO_DATA_TODAY: " + text)
+                        
+                page.wait_for_timeout(500)
+            else:
+                rows_loc.first.wait_for(state="visible", timeout=1000)
 
             stale = _is_grid_stale(grid, last_signature)
 
@@ -757,7 +770,9 @@ def _ensure_grid_data(
                 if any(h for h in headers):
                     return grid, headers
 
-        except Exception:
+        except Exception as e:
+            if "NO_DATA_TODAY" in str(e):
+                raise
             pass
 
         refreshed = _click_grid_refresh_button(page)
@@ -1297,7 +1312,7 @@ def main() -> None:
                         try:
                             grid_el, headers = _ensure_grid_data(
                                 page,
-                                timeout_ms=15_000,
+                                timeout_ms=45_000,
                                 attempts=MAX_ATTEMPTS,
                                 last_signature=None,
                             )
@@ -1305,6 +1320,19 @@ def main() -> None:
                             last_sig = _get_grid_signature(grid_el)
                         except Exception as e:
                             detail = str(e)
+                            if "NO_DATA_TODAY" in detail:
+                                _insert_plant_event(
+                                    conn,
+                                    captured_at=captured_at,
+                                    plant_id=plant.plant_id,
+                                    plant_name=plant_name,
+                                    status="NO_DATA_TODAY",
+                                    status_detail=f"Sin datos hoy para ({device_name})",
+                                )
+                                conn.commit()
+                                print(f"    -> Sin datos hoy para {device_name}", flush=True)
+                                continue
+
                             _insert_plant_event(
                                 conn,
                                 captured_at=captured_at,
@@ -1328,7 +1356,7 @@ def main() -> None:
                                 page.wait_for_timeout(300)
                                 grid_el, headers = _ensure_grid_data(
                                     page,
-                                    timeout_ms=10_000,
+                                    timeout_ms=45_000,
                                     attempts=2,
                                     last_signature=last_sig,
                                 )
