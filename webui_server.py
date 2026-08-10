@@ -107,6 +107,7 @@ class Job:
     running: bool = False
     stop_requested: bool = False
     stop_requested_at: float | None = None
+    ended_at: float | None = None
     # Estado para métricas de red (cuadrícula / plantas-hora)
     log_parse_pos: int = 0
     seen_plant_events: set[str] = field(default_factory=set)
@@ -2804,6 +2805,7 @@ def _start_job(provider: str) -> Job:
             if j:
                 j.exit_code = code
                 j.running = False
+                j.ended_at = time.time()
         with _jobs_lock:
             _procs.pop(provider, None)
 
@@ -2851,11 +2853,19 @@ def _job_status(provider: str) -> dict[str, Any]:
             with _jobs_lock:
                 _procs.pop(provider, None)
 
+    elapsed = None
+    if j.started_at:
+        end_ts = j.ended_at or (time.time() if j.running else None)
+        if end_ts:
+            elapsed = max(0, round(end_ts - j.started_at, 1))
+
     return {
         "provider": provider,
         "label": PROVIDERS[provider]["label"],
         "running": bool(j.running),
         "started_at": j.started_at,
+        "ended_at": j.ended_at,
+        "elapsed_seconds": elapsed,
         "pid": j.pid,
         "exit_code": j.exit_code,
         "log": j.log_path.name,

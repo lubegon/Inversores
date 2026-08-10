@@ -1,5 +1,5 @@
 {
-  "version": "2.10.6",
+  "version": "2.10.7",
   "release_date": "2026-08-10",
-  "notes": "Fix: Renderizado automático del icono de estado de la tarjeta Supabase Link."
+  "notes": "Feature: Cronómetro de duración en tiempo real (y tiempo total al finalizar) para todos los proveedores (Shinemonitor, Growatt, Values)."
 }

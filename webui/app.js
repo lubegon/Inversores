@@ -152,12 +152,27 @@ function createProviderCard(provider, templateId) {
     }
 
     if (captureStatusEl) {
+      function fmtDuration(sec) {
+        if (sec == null || sec < 0) return '';
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return m > 0 ? `${m}m ${s}s` : `${s}s`;
+      }
+      
+      let durText = '';
+      if (status.elapsed_seconds != null) {
+        durText = ` (${fmtDuration(status.elapsed_seconds)})`;
+      } else if (status.running && status.started_at) {
+        const liveSec = Math.max(0, Math.floor((Date.now() / 1000) - status.started_at));
+        durText = ` (${fmtDuration(liveSec)})`;
+      }
+
       if (status.running) {
-        captureStatusEl.innerHTML = `<span style="color:#ff6b00; animation:pulse-orange 1.5s infinite;">● Capturando...</span>`;
+        captureStatusEl.innerHTML = `<span style="color:#ff6b00; animation:pulse-orange 1.5s infinite;">● Capturando...${durText}</span>`;
       } else if (status.exit_code === 0) {
-        captureStatusEl.innerHTML = `<span style="color:#10b981;">● Finalizado / Listo</span>`;
+        captureStatusEl.innerHTML = `<span style="color:#10b981;">● Finalizado${durText}</span>`;
       } else if (status.exit_code != null) {
-        captureStatusEl.innerHTML = `<span style="color:#ef4444;">● Error (Cód: ${status.exit_code})</span>`;
+        captureStatusEl.innerHTML = `<span style="color:#ef4444;">● Error (Cód: ${status.exit_code})${durText}</span>`;
       } else {
         captureStatusEl.innerHTML = `<span style="color:#94a3b8;">● Listo</span>`;
       }
