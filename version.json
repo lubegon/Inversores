@@ -1,5 +1,5 @@
 {
-  "version": "2.9.8",
+  "version": "2.9.9",
   "release_date": "2026-08-10",
-  "notes": "Correccion del selector del arbol para cuentas de administrador (plantMgrTree vs plant_tree) y soporte de URL managesystemnew."
+  "notes": "Correccion del selector de tabla de datos para paneles de administrador (managesystemnew). Se agrego soporte para tablas que no usan la libreria Kendo UI."
 }

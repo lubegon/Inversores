@@ -690,6 +690,11 @@ def _find_kendo_grid(page: Page) -> Locator | None:
         "div.k-grid:has(th:has-text('Update Time'))",
         "div.k-grid:has(th:has-text('Voltage'))",
         "div.k-grid",
+        "table#invDetailTable",
+        "table.tableStyle:has(th:has-text('Timestamp'))",
+        "table.tableStyle:has(th:has-text('Voltage'))",
+        "table.tableStyle:has(th:has-text('Voltaje'))",
+        "table.tableStyle",
     ]
 
     for sel in candidates:
@@ -726,11 +731,11 @@ def _ensure_grid_data(
 
     grid = _find_kendo_grid(page)
     if not grid:
-        page.wait_for_selector("div.k-grid", timeout=timeout_ms)
+        page.wait_for_selector("div.k-grid, table.tableStyle, table#invDetailTable", timeout=timeout_ms)
         grid = _find_kendo_grid(page)
 
     if not grid:
-        raise RuntimeError("No se encontró ningún div.k-grid visible")
+        raise RuntimeError("No se encontró ningún div.k-grid o table visible")
 
     rows_loc = grid.locator("tbody > tr")
 
@@ -746,7 +751,7 @@ def _ensure_grid_data(
 
                 headers = [
                     (th.inner_text() or "").strip()
-                    for th in grid.locator("thead th").all()
+                    for th in grid.locator("th").all()
                 ]
 
                 if any(h for h in headers):
@@ -760,7 +765,7 @@ def _ensure_grid_data(
         page.wait_for_timeout(200)
 
     headers = [
-        (th.inner_text() or "").strip() for th in grid.locator("thead th").all()
+        (th.inner_text() or "").strip() for th in grid.locator("th").all()
     ]
     return grid, headers
 
