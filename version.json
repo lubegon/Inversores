@@ -1,5 +1,5 @@
 {
-  "version": "2.10.8",
+  "version": "2.10.9",
   "release_date": "2026-08-10",
-  "notes": "Fix: Actualización inmediata de celdas OK (verde) vs FAIL (rojo) en vivo durante el raspado de Shinemonitor."
+  "notes": "Performance: Detección ultrarrápida de 'Sin datos hoy' y reducción de timeouts de 45s a 8s para acelerar drásticamente la extracción en Shinemonitor."
 }

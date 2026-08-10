@@ -745,12 +745,13 @@ def _ensure_grid_data(
             pass
         grid = _find_kendo_grid(page)
 
+    err_msg = page.locator("#invDetailCue, div.faultInfo").first
+    if err_msg.is_visible():
+        text = (err_msg.inner_text() or "").lower()
+        if "no detail data" in text or "no data" in text or "nodata" in text:
+            raise RuntimeError("NO_DATA_TODAY: " + text)
+
     if not grid:
-        err_msg = page.locator("#invDetailCue, div.faultInfo").first
-        if err_msg.is_visible():
-            text = (err_msg.inner_text() or "").lower()
-            if "no detail data" in text or "no data" in text:
-                raise RuntimeError("NO_DATA_TODAY: " + text)
         raise RuntimeError("No se encontró ningún div.k-grid o table visible")
 
     rows_loc = grid.locator("tbody > tr")
@@ -766,10 +767,10 @@ def _ensure_grid_data(
                 err_msg = page.locator("#invDetailCue, div.faultInfo").first
                 if err_msg.is_visible():
                     text = (err_msg.inner_text() or "").lower()
-                    if "no detail data" in text or "no data" in text:
+                    if "no detail data" in text or "no data" in text or "nodata" in text:
                         raise RuntimeError("NO_DATA_TODAY: " + text)
                         
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(250)
             else:
                 rows_loc.first.wait_for(state="visible", timeout=1000)
 
@@ -1334,8 +1335,8 @@ def main() -> None:
                         try:
                             grid_el, headers = _ensure_grid_data(
                                 page,
-                                timeout_ms=45_000,
-                                attempts=MAX_ATTEMPTS,
+                                timeout_ms=8_000,
+                                attempts=1,
                                 last_signature=None,
                             )
                             update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
