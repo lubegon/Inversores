@@ -474,8 +474,17 @@ def _collect_inverters_and_device_anchors(tree: Locator, timeout_ms: int = 10_00
     start = time.time()
     while (time.time() - start) * 1000 < timeout_ms:
         nodes = tree.locator("li.jstree-node")
-        if nodes.count() > 0:
+        c = nodes.count()
+        if c > 1:
             break
+        if c == 1:
+            try:
+                txt = (nodes.first.locator("> a.jstree-anchor").first.inner_text() or "").strip().lower()
+                nid = (nodes.first.get_attribute("id") or "").strip().lower()
+                if "inverter" in txt or "inversor" in txt or nid.startswith("inv_") or nid.startswith("pn_"):
+                    break
+            except Exception:
+                pass
         page.wait_for_timeout(300)
 
     try:

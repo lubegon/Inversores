@@ -1,5 +1,5 @@
 {
-  "version": "2.7.2",
+  "version": "2.7.3",
   "release_date": "2026-08-09",
-  "notes": "Vaciado automático de logs viejos de sesión y actividades Supabase al iniciar el servidor WebUI o abrir el Dashboard por primera vez."
+  "notes": "Espera activa de respuesta AJAX por nodos hijos (count > 1) en _collect_inverters_and_device_anchors eliminando por completo falsos eventos de 'No hay Inverter en este Monitor'."
 }
