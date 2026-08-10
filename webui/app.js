@@ -323,21 +323,43 @@ async function initDashboard(config) {
     const total = payload?.total ?? 0;
     const pct = total > 0 ? Math.round(((ok + fail) / total) * 100) : 0;
     
+    const isRunning = !!payload?.running;
+    const isSyncing = !!payload?.syncing;
+    
+    let statusText = '💤 Inactivo / En espera';
+    let progressColor = '#94a3b8'; // default
+    
+    if (isRunning) {
+      statusText = '⚡ Capturando datos en tiempo real...';
+    } else if (isSyncing) {
+      statusText = `☁️ Sincronizando con Supabase (Nube)... ${payload.syncCurrent}/${payload.syncTotal}`;
+      progressColor = '#8b5cf6'; // purple for syncing
+    } else if (total > 0 && pending === 0) {
+      statusText = '✨ Extracción Completada';
+    }
+    
+    const displayPct = isSyncing ? payload.syncPct : pct;
+    const displayOkFail = isSyncing ? `${payload.syncCurrent}/${payload.syncTotal}` : `${ok + fail}/${total}`;
+    
     let html = `
-      <div class="progress-bar-container" style="width:100%; display:flex; flex-direction:column; gap:8px;">
-        <div class="progress-bar-status" style="display:flex; justify-content:space-between; font-size:0.8rem; color:#94a3b8; font-weight:600;">
-          <span>Progreso: <strong style="color:#fff;">${pct}%</strong> (${ok + fail}/${total})</span>
-          <div style="display:flex; gap:10px;">
-            <span style="color:#10b981;">● OK: ${ok}</span>
-            <span style="color:#ef4444;">● FAIL: ${fail}</span>
-            ${retry > 0 ? `<span style="color:#f59e0b;">● RETRY: ${retry}</span>` : ''}
+        <div class="progress-bar-container" style="width:100%; display:flex; flex-direction:column; gap:8px;">
+          <div class="progress-bar-status" style="display:flex; justify-content:space-between; font-size:0.8rem; color:#94a3b8; font-weight:600;">
+            <span>Progreso: <strong style="color:#fff;">${displayPct}%</strong> (${displayOkFail})</span>
+            <div style="display:flex; gap:10px;">
+              ${!isSyncing ? `
+                <span style="color:#10b981;">● OK: ${ok}</span>
+                <span style="color:#ef4444;">● FAIL: ${fail}</span>
+                ${retry > 0 ? `<span style="color:#f59e0b;">● RETRY: ${retry}</span>` : ''}
+              ` : `<span style="color:${progressColor};">● Sincronizando</span>`}
+            </div>
           </div>
-        </div>
-        <div class="progress-bar-track" style="display:flex; height:18px; background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:9px; overflow:hidden; box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">
+          <div class="progress-bar-track" style="position:relative; display:flex; height:18px; background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:9px; overflow:hidden; box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">
     `;
     
-    if (total === 0) {
+    if (total === 0 && !isSyncing) {
       html += `<div style="width:100%; background:rgba(255,255,255,0.05);"></div>`;
+    } else if (isSyncing) {
+      html += `<div style="position:absolute; left:0; top:0; bottom:0; width:${displayPct}%; background:linear-gradient(90deg, #6d28d9 0%, #8b5cf6 100%); transition:width 0.3s; box-shadow:0 0 10px rgba(139,92,246,0.6);"></div>`;
     } else {
       for (const p of plants) {
         const name = (p?.name || '').trim();
@@ -357,16 +379,11 @@ async function initDashboard(config) {
       }
     }
     
-    const isRunning = !!payload?.running;
-    let statusText = isRunning ? '⚡ Capturando datos en tiempo real...' : '💤 Inactivo / En espera';
-    if (!isRunning && total > 0 && pending === 0) {
-      statusText = '✨ Extracción Completada';
-    }
-    
     html += `
-        </div>
-        <div class="progress-current-task" style="font-size:0.75rem; color:#64748b; font-style:italic;">
-          Status: ${statusText}
+          </div>
+          <div class="progress-current-task" style="font-size:0.75rem; color:${isSyncing ? progressColor : '#64748b'}; font-style:italic;">
+            Status: ${statusText}
+          </div>
         </div>
       </div>
     `;
@@ -614,8 +631,15 @@ async function initDashboard(config) {
       let running = null;
       try {
         const grid = await apiGet(`/api/status-grid?provider=${encodeURIComponent(pk)}`);
+        const syncStatus = await apiGet(`/api/sync-status`);
+        if (syncStatus && syncStatus.status === 'syncing' && syncStatus.provider === pk) {
+           grid.syncing = true;
+           grid.syncPct = syncStatus.percentage;
+           grid.syncTotal = syncStatus.total;
+           grid.syncCurrent = syncStatus.current;
+        }
         renderStatusGrid(pk, grid);
-        running = !!grid?.running;
+        running = !!grid?.running || !!grid?.syncing;
       } catch { }
       // Por requerimiento: la gráfica de 24h debe empezar a actualizarse
       // una vez termina el proceso de ese gestor.
@@ -999,7 +1023,23 @@ async function initSettings(config) {
   otherHtml += `</div></div>`;
   if (hasOthers) html += otherHtml;
   
-  html += '</div>';
+  html += `
+    <div class="pro-settings-card">
+      <div class="card-title">☁️ Base de Datos (Supabase)</div>
+      <div class="card-body">
+        <div class="setting-row">
+          <label class="setting-label">Auditoría y Corrección de Datos</label>
+          <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 8px;">
+            Elimina métricas vacías, duplicadas y eventos atascados de la nube.
+          </div>
+          <button type="button" id="btn-validate-supabase" class="btn btn-primary" style="padding: 10px; font-weight: bold; background: #6d28d9; border: none; cursor: pointer; border-radius: 6px;">
+            Ejecutar Validación
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  
   container.innerHTML = html;
 
   container.querySelectorAll('.neon-toggle').forEach(t => {
@@ -1040,6 +1080,28 @@ async function initSettings(config) {
           btnSave.textContent = `Guardar Configuración`;
         }, 3000);
       }
+    });
+  }
+
+  const btnValidate = document.getElementById('btn-validate-supabase');
+  if (btnValidate) {
+    btnValidate.addEventListener('click', async () => {
+      if (!confirm('¿Deseas auditar y limpiar los registros corruptos en Supabase? Esto puede tomar un momento.')) return;
+      
+      btnValidate.disabled = true;
+      btnValidate.textContent = 'Validando...';
+      try {
+        const resp = await apiGet('/api/supabase/validate');
+        if (resp && resp.ok) {
+          alert(`¡Validación exitosa!\nLecturas vacías eliminadas: ${resp.results.deleted_empty_readings}`);
+        } else {
+          alert('Error en validación: ' + (resp?.error || 'Desconocido'));
+        }
+      } catch (e) {
+        alert('Error de red al validar.');
+      }
+      btnValidate.disabled = false;
+      btnValidate.textContent = 'Ejecutar Validación';
     });
   }
 }

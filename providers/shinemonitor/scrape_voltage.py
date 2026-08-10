@@ -1409,8 +1409,32 @@ def _process_sync_queue() -> None:
     if not _SYNC_QUEUE:
         return
     
-    print(f"\\nIniciando sincronizacion con Supabase ({len(_SYNC_QUEUE)} elementos)...", flush=True)
-    for item in _SYNC_QUEUE:
+    total = len(_SYNC_QUEUE)
+    print(f"\nIniciando sincronizacion con Supabase ({total} elementos)...", flush=True)
+    
+    status_file = Path("storage") / "sync_status.json"
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    def _update_status(current: int):
+        try:
+            status_file.write_text(
+                json.dumps({
+                    "provider": "shinemonitor",
+                    "total": total,
+                    "current": current,
+                    "percentage": int((current / total) * 100) if total > 0 else 100,
+                    "status": "syncing",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }),
+                encoding="utf-8"
+            )
+        except Exception:
+            pass
+
+    for i, item in enumerate(_SYNC_QUEUE):
+        if i % 10 == 0:
+            _update_status(i)
+            
         try:
             t = item["type"]
             if t == "plant":
@@ -1450,6 +1474,14 @@ def _process_sync_queue() -> None:
         except Exception as e:
             print(f"Error subiendo a Supabase: {e}", flush=True)
 
+    _update_status(total)
+    try:
+        data = json.loads(status_file.read_text(encoding="utf-8"))
+        data["status"] = "idle"
+        status_file.write_text(json.dumps(data), encoding="utf-8")
+    except Exception:
+        pass
+        
     _SYNC_QUEUE.clear()
 
 

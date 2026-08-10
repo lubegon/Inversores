@@ -4256,6 +4256,16 @@ class Handler(BaseHTTPRequestHandler):
                 _json_response(self, 500, {"ok": False, "error": str(e)})
             return
 
+        if path == "/api/supabase/validate":
+            try:
+                from providers.supabase_validator import validate_and_correct_supabase
+                res = validate_and_correct_supabase()
+                _json_response(self, 200, res)
+            except Exception as e:
+                _json_response(self, 500, {"ok": False, "error": str(e)})
+            return
+
+
         if path == "/api/system-logs":
             try:
                 from providers.system_logger import get_recent_logs
@@ -4408,6 +4418,18 @@ class Handler(BaseHTTPRequestHandler):
                     ]
                 },
             )
+            return
+
+        if path == "/api/sync-status":
+            try:
+                status_file = STORAGE_DIR / "sync_status.json"
+                if status_file.exists():
+                    data = json.loads(status_file.read_text(encoding="utf-8"))
+                    _json_response(self, 200, data)
+                else:
+                    _json_response(self, 200, {"status": "idle"})
+            except Exception:
+                _json_response(self, 200, {"status": "idle"})
             return
 
         if path == "/api/status":

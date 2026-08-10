@@ -1,5 +1,5 @@
 {
-  "version": "2.9.11",
+  "version": "2.10.0",
   "release_date": "2026-08-10",
-  "notes": "Correccion ultra critica: Se soluciono un problema donde la pagina esperaba 45 segundos por la tabla incluso cuando el mensaje de 'no hay datos hoy' ya estaba en pantalla. Ahora saltara las plantas vacias instantaneamente."
+  "notes": "Feature: Agregado UI para monitorear sincronización con Supabase (color morado) y panel para auditar/limpiar base de datos remotamente desde Configuración."
 }
