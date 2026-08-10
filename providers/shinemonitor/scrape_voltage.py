@@ -365,11 +365,20 @@ def _ensure_tree_loaded(
             pass
 
         if attempt < retries:
-            try:
-                page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
-                page.wait_for_selector("#plant_tree", state="attached", timeout=timeout_ms)
-            except Exception:
-                pass
+            dev_tab_selectors = [
+                "#plantTab a:has-text('Device Management')",
+                "#plantTab a:has-text('Gestión de dispositivos')",
+                "#plantTab > li:nth-child(4) > a",
+            ]
+            for sel in dev_tab_selectors:
+                try:
+                    tab = page.locator(sel).first
+                    if tab.is_visible():
+                        tab.click()
+                        page.wait_for_timeout(1000)
+                        break
+                except Exception:
+                    pass
 
     if tree.locator("li.jstree-node").count() == 0:
         if run_dir:
@@ -395,7 +404,6 @@ def _select_plant_and_load_tree(
     try:
         dropdown.wait_for(state="attached", timeout=4_000)
     except Exception:
-        # Si el selector de plantas no está visible (la página navegó fuera o la sesión caducó)
         page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(500)
         if user and password:
@@ -462,6 +470,11 @@ def _select_plant_and_load_tree(
         pass
 
     try:
+        item.scroll_into_view_if_needed()
+    except Exception:
+        pass
+
+    try:
         page.evaluate(f"try {{ if (typeof currIndex !== 'undefined') currIndex = 3; }} catch (_) {{}}; getPlantId('plant_{plant.plant_id}');")
     except Exception:
         try:
@@ -470,16 +483,6 @@ def _select_plant_and_load_tree(
             item.click(force=True)
 
     page.wait_for_timeout(500)
-
-    # Si la URL sigue en index_en.html (Overview), o si plant_tree no está en el DOM actual,
-    # navegar explícitamente a main.html?plantId=ID para cargar la vista de detalle
-    if "main.html" not in (page.url or "") or page.locator("#plant_tree").count() == 0:
-        main_url = f"https://shinemonitor.com/main.html?plantId={plant.plant_id}"
-        try:
-            page.goto(main_url, wait_until="domcontentloaded", timeout=20_000)
-            page.wait_for_timeout(500)
-        except Exception:
-            pass
 
     # Asegurar que la pestaña Device Management esté visible y seleccionada si existe
     dev_tab_selectors = [

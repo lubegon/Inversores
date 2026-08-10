@@ -1,5 +1,5 @@
 {
-  "version": "2.9.1",
+  "version": "2.9.2",
   "release_date": "2026-08-10",
-  "notes": "Corregida la navegacion directa a main.html por plant_id en ShineMonitor y validacion estricta de nodos jstree para evitar falsos eventos NO_INVERTER."
+  "notes": "Optimizacion de la seleccion de plantas y navegacion nativa en ShineMonitor eliminando recargas artificiales."
 }
