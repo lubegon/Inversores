@@ -1,5 +1,5 @@
 {
-  "version": "2.10.13",
+  "version": "2.10.14",
   "release_date": "2026-08-10",
-  "notes": "Fix: Validación exitosa del panel principal de Growatt (Total Generation / All Plants) en la imagen de captura tras el login."
+  "notes": "Fix: Inspección directa del texto del cuerpo ('Total Generation', 'Welcome', 'All Plants') para confirmar login exitoso en Growatt sin falsos SystemExit."
 }

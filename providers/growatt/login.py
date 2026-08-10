@@ -123,11 +123,11 @@ def main() -> None:
             try:
                 page.wait_for_function(
                     """() => {
-                        const userInp = document.querySelector('#val_loginAccount');
-                        const isUserVisible = userInp && userInp.offsetWidth > 0 && userInp.offsetHeight > 0;
+                        const txt = document.body ? document.body.innerText : '';
+                        const hasDash = txt.includes('Total Generation') || txt.includes('All Plants') || txt.includes('Welcome');
                         const isNotLoginUrl = !location.href.includes('/login');
-                        const hasAdmin = !!document.querySelector('#index, .layui-layout-admin, #plantList, .header-container');
-                        return !isUserVisible || isNotLoginUrl || hasAdmin;
+                        const hasAdmin = !!document.querySelector('#index, .layui-layout-admin, #plantList, .header-container, .main-container');
+                        return hasDash || isNotLoginUrl || hasAdmin;
                     }""",
                     timeout=15_000,
                 )
@@ -142,10 +142,14 @@ def main() -> None:
 
             login_still_visible = False
             try:
+                body_text = page.locator("body").inner_text() or ""
                 current_url = (page.url or "").lower()
                 has_dashboard = (
-                    "login" not in current_url
-                    or page.locator("#index, .layui-layout-admin, #plantList, .header-container, .main-container, div.nav, :has-text('Total Generation'), :has-text('All Plants')").count() > 0
+                    "Total Generation" in body_text
+                    or "All Plants" in body_text
+                    or "Welcome" in body_text
+                    or "login" not in current_url
+                    or page.locator("#index, .layui-layout-admin, #plantList, .header-container, .main-container, div.nav").count() > 0
                 )
                 if has_dashboard:
                     login_still_visible = False
