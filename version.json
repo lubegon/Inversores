@@ -1,5 +1,5 @@
 {
-  "version": "2.10.4",
+  "version": "2.10.5",
   "release_date": "2026-08-10",
-  "notes": "Feature: Todos los eventos de extracción (OK, Sin datos hoy, errores) se transmiten en vivo a la consola 'LOGS DEL SISTEMA Y SUPABASE'."
+  "notes": "Fix: Reconocimiento exacto del ID de planta (Plant <ID>) en mensajes de consola en vivo para conteo preciso de OK vs FAIL."
 }

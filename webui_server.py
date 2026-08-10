@@ -2037,7 +2037,7 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
 
 
 _re_sm_plant = re.compile(r"\bPlant\s+(\d+)\b", re.IGNORECASE)
-_re_sm_fail = re.compile(r"\b(NO_TABLE|NO_TAB|NO_DATA)\b|Sin\s+datos\s+hoy", re.IGNORECASE)
+_re_sm_fail = re.compile(r"\b(NO_TABLE|NO_TAB|NO_DATA|NO_DATA_TODAY)\b|Sin\s+datos\s+hoy", re.IGNORECASE)
 
 _re_gw_plant = re.compile(r"\bPlanta\s+(\d+)\s*/\s*(\d+)\b", re.IGNORECASE)
 _re_gw_ok = re.compile(r"\bOK:\s*SQLite:\s*insertado\b", re.IGNORECASE)
@@ -2065,7 +2065,9 @@ def _parse_shinemonitor_fail_plants_full(log_path: Path) -> set[str]:
             if m:
                 current_plant = m.group(1)
             if _re_sm_fail.search(line):
-                if current_plant:
+                if m:
+                    fails.add(m.group(1))
+                elif current_plant:
                     fails.add(current_plant)
     except Exception:
         return fails
@@ -2103,7 +2105,10 @@ def _parse_shinemonitor_fail_plants_incremental(job: Job) -> set[str]:
                 job._last_sm_plant = current_plant
 
             if _re_sm_fail.search(line):
-                if current_plant:
+                # Si la misma línea contiene "Plant <ID>", priorizar ese ID
+                if m:
+                    job.sm_fail_plants.add(m.group(1))
+                elif current_plant:
                     job.sm_fail_plants.add(current_plant)
     except Exception:
         pass
