@@ -79,3 +79,4 @@ Call log:
 [2026-08-09 23:01:52] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 1386462: Nodo Antimano: No se encontró la plant_id 1386462 en el combo de plantas (#plantlist / #plant_select_listbox) (shinemonitor)
 [2026-08-09 23:01:53] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 1429832: RBS Humboltd: No se encontró la plant_id 1429832 en el combo de plantas (#plantlist / #plant_select_listbox) (shinemonitor)
 [2026-08-09 23:01:55] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 1495613: RBS Ivic: No se encontró la plant_id 1495613 en el combo de plantas (#plantlist / #plant_select_listbox) (shinemonitor)
+[2026-08-09 23:03:53] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 1495613: RBS Ivic: No se encontró la plant_id 1495613 en el combo de plantas (#plantlist / #plant_select_listbox) (shinemonitor)

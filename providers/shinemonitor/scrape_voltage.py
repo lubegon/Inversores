@@ -564,12 +564,28 @@ def _device_key(anchor: Locator) -> str:
 def _click_data_details(
     page: Page,
     *,
-    timeout_ms: int = 30_000,
+    timeout_ms: int = 15_000,
     run_dir: Path | None = None,
     debug_name: str = "notab",
 ) -> bool:
 
-    tab = page.locator("a.k-link:has-text('Data Details')").first
+    tab_selectors = [
+        "a.k-link:has-text('Data Details')",
+        ".k-tabstrip-items li:has-text('Data Details')",
+        "li.k-item:has-text('Data Details')",
+        ":text('Data Details')",
+        ":text('Detalles')",
+    ]
+    for sel in tab_selectors:
+        try:
+            tab = page.locator(sel).first
+            if tab.is_visible():
+                tab.click()
+                return True
+        except Exception:
+            pass
+
+    tab = page.locator("a.k-link:has-text('Data Details'), .k-tabstrip-items li:has-text('Data Details'), :text('Data Details')").first
     try:
         tab.wait_for(state="visible", timeout=timeout_ms)
         tab.click()
