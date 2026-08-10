@@ -235,21 +235,31 @@ def _select_plants(page, log: RunLogger) -> list[str]:
     return names
 
 
-def _js_click_plant_dd(page, idx: int) -> bool:
+def _js_click_plant_dd(page, idx: int, plant_name: str = "") -> bool:
     try:
         return bool(
             page.evaluate(
                 """
-(idx) => {
-  const list = Array.from(document.querySelectorAll('#header_sel_plantstwo dd'));
-  const el = list[idx];
-  if (!el) return false;
-  // Click robusto aunque el dropdown esté oculto.
-  el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-  return true;
+([idx, name]) => {
+  // 1. Click por lista dd
+  const list = Array.from(document.querySelectorAll('#header_sel_plantstwo dd, #header_sel_plantstwo li'));
+  if (list[idx]) {
+    list[idx].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    return true;
+  }
+  // 2. Click por texto de nombre en tarjetas
+  if (name) {
+    const cards = Array.from(document.querySelectorAll('.plantItem, .plant-box, .deviceBox, div'));
+    const matched = cards.find(c => c.innerText && c.innerText.includes(name));
+    if (matched) {
+      matched.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      return true;
+    }
+  }
+  return false;
 }
 """,
-                idx,
+                [idx, plant_name],
             )
         )
     except Exception:
@@ -257,47 +267,43 @@ def _js_click_plant_dd(page, idx: int) -> bool:
 
 
 def _open_plants_dropdown(page) -> None:
-    # A veces el dropdown queda cerrado; reintentamos hasta ver un dd visible.
-    for _ in range(3):
-        try:
-            page.locator(SEL_TOP_PLANT_TITLE).click(timeout=3_000)
-        except Exception:
+    for _ in range(2):
+        for click_sel in [SEL_TOP_PLANT_TITLE, SEL_TOP_PLANT_SEARCH, ".selectTitle"]:
             try:
-                page.locator(SEL_TOP_PLANT_TITLE).click(force=True, timeout=3_000)
+                page.locator(click_sel).first.click(timeout=2_000)
+                break
             except Exception:
                 pass
-
         try:
-            page.locator(SEL_TOP_PLANT_DD).first.wait_for(state="attached", timeout=5_000)
+            page.locator(SEL_TOP_PLANT_DD).first.wait_for(state="attached", timeout=3_000)
+            return
         except Exception:
             continue
 
-        try:
-            page.locator(SEL_TOP_PLANT_DD).first.wait_for(state="visible", timeout=2_000)
-            return
-        except Exception:
-            # Aunque no sea visible, igual podemos usar click force / JS.
-            return
 
-
-def _select_plant_by_index(page, idx: int) -> None:
-    # 1) Intentar JS directo (no depende de visibilidad)
-    if _js_click_plant_dd(page, idx):
+def _select_plant_by_index(page, idx: int, plant_name: str = "") -> None:
+    # 1) Intentar JS directo sin bloqueos
+    if _js_click_plant_dd(page, idx, plant_name):
         return
 
-    # 2) Abrir dropdown y click normal/force
-    _open_plants_dropdown(page)
-    dd = page.locator(SEL_TOP_PLANT_DD).nth(idx)
-    dd.wait_for(state="attached", timeout=20_000)
+    # 2) Intentar click sobre tarjetas del Dashboard
+    if plant_name:
+        try:
+            card = page.locator(f"text='{plant_name}'").first
+            if card.is_visible():
+                card.click(timeout=3_000)
+                return
+        except Exception:
+            pass
+
+    # 3) Abrir dropdown como último recurso best-effort
     try:
-        dd.scroll_into_view_if_needed(timeout=3_000)
+        _open_plants_dropdown(page)
+        dd = page.locator(f"{SEL_TOP_PLANT_DD}, #header_sel_plantstwo dd").nth(idx)
+        if dd.count() > 0:
+            dd.click(timeout=3_000, force=True)
     except Exception:
         pass
-    try:
-        dd.click(timeout=5_000)
-        return
-    except Exception:
-        dd.click(timeout=8_000, force=True)
 
 
 def main() -> None:
@@ -363,7 +369,7 @@ def main() -> None:
                 for idx, plant_name in enumerate(plant_names):
                     log.step(f"Planta {idx+1}/{len(plant_names)}: {plant_name}")
                     try:
-                        _select_plant_by_index(page, idx)
+                        _select_plant_by_index(page, idx, plant_name)
 
                         # Confirmar cambio de planta en el panel (best-effort)
                         try:

@@ -1,5 +1,5 @@
 {
-  "version": "2.11.1",
+  "version": "2.11.2",
   "release_date": "2026-08-10",
-  "notes": "Fix: Descubrimiento multicanal de plantas Growatt y lista de respaldo contra lecturas vacías."
+  "notes": "Fix: Selección fluida y sin bloqueos de tiempo de las 7 plantas de Growatt combinando JS y tarjetas de interfaz."
 }
