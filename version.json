@@ -1,5 +1,5 @@
 {
-  "version": "2.10.1",
+  "version": "2.10.2",
   "release_date": "2026-08-10",
-  "notes": "Fix: Corrección del contador de FALLO en vivo durante captura (evita falsos rojos en plantas pendientes)."
+  "notes": "Fix: Actualizado reconocedor de fallos de Shinemonitor para marcar 'Sin datos hoy' en vivo en la grilla del Dashboard."
 }

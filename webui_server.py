@@ -2037,7 +2037,7 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
 
 
 _re_sm_plant = re.compile(r"\bPlant\s+(\d+)\b", re.IGNORECASE)
-_re_sm_fail = re.compile(r"\b(NO_TABLE|NO_TAB|NO_DATA)\b", re.IGNORECASE)
+_re_sm_fail = re.compile(r"\b(NO_TABLE|NO_TAB|NO_DATA)\b|Sin\s+datos\s+hoy", re.IGNORECASE)
 
 _re_gw_plant = re.compile(r"\bPlanta\s+(\d+)\s*/\s*(\d+)\b", re.IGNORECASE)
 _re_gw_ok = re.compile(r"\bOK:\s*SQLite:\s*insertado\b", re.IGNORECASE)
