@@ -1,5 +1,5 @@
 {
-  "version": "2.6.2",
+  "version": "2.6.3",
   "release_date": "2026-08-09",
-  "notes": "Eliminación de la excepción de tiempo de espera bloqueante en _ensure_tree_loaded para plantas sin inversores o con carga AJAX asíncrona."
+  "notes": "Despliegue automático de nodos jstree con open_all y coincidencia por ID (inv_/pn_) para capturar inyectores y monitores sin falsos positivos de NO_INVERTER."
 }

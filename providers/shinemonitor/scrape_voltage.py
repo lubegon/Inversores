@@ -468,10 +468,33 @@ def _select_plant_and_load_tree(
     return plant_name, tree
 
 
-def _collect_inverters_and_device_anchors(tree: Locator) -> tuple[int, list[Locator]]:
+def _collect_inverters_and_device_anchors(tree: Locator, timeout_ms: int = 10_000) -> tuple[int, list[Locator]]:
+
+    page = tree.page
+    start = time.time()
+    while (time.time() - start) * 1000 < timeout_ms:
+        nodes = tree.locator("li.jstree-node")
+        if nodes.count() > 0:
+            break
+        page.wait_for_timeout(300)
+
+    try:
+        tree.evaluate("""(el) => {
+            try {
+                if (window.$ && $.jstree) {
+                    $(el).jstree('open_all');
+                }
+            } catch (_) {}
+            el.querySelectorAll('li.jstree-closed > i.jstree-ocl').forEach(icon => icon.click());
+        }""")
+        page.wait_for_timeout(400)
+    except Exception:
+        pass
 
     nodes = tree.locator("li.jstree-node")
     count = nodes.count()
+    if count == 0:
+        return 0, []
 
     inverter_lis: list[Locator] = []
 
@@ -479,12 +502,19 @@ def _collect_inverters_and_device_anchors(tree: Locator) -> tuple[int, list[Loca
         node = nodes.nth(i)
         a = node.locator("> a.jstree-anchor").first
         text = (a.inner_text() or "").strip()
+        node_id = (node.get_attribute("id") or "").strip()
 
-        if text.startswith("Inverter"):
+        if text.lower().startswith("inverter") or text.lower().startswith("inversor") or node_id.startswith("inv_") or node_id.startswith("pn_"):
             inverter_lis.append(node)
 
     inverter_count = len(inverter_lis)
     if inverter_count == 0:
+        # Fallback: si hay nodos de hoja jstree-leaf, usarlos directamente como dispositivos
+        leaf_nodes = tree.locator("li.jstree-leaf > a.jstree-anchor")
+        leaf_count = leaf_nodes.count()
+        if leaf_count > 0:
+            anchors: list[Locator] = [leaf_nodes.nth(k) for k in range(leaf_count)]
+            return leaf_count, anchors
         return 0, []
 
     device_anchors: list[Locator] = []
@@ -499,14 +529,24 @@ def _collect_inverters_and_device_anchors(tree: Locator) -> tuple[int, list[Loca
             is_open = False
 
         if not is_open:
-            icon.click()
-            inv_li.page.wait_for_timeout(200)
+            try:
+                icon.click()
+                inv_li.page.wait_for_timeout(200)
+            except Exception:
+                pass
 
         children = inv_li.locator("ul.jstree-children > li.jstree-node > a.jstree-anchor")
         c_count = children.count()
 
         for c_idx in range(c_count):
             device_anchors.append(children.nth(c_idx))
+
+    if not device_anchors:
+        # Si las sub-hojas fallaron pero encontramos nodos inverter, usar sus anchors directos
+        for inv_li in inverter_lis:
+            a = inv_li.locator("> a.jstree-anchor").first
+            if a.count() > 0:
+                device_anchors.append(a)
 
     return inverter_count, device_anchors
 
