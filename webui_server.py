@@ -3780,10 +3780,9 @@ def _status_grid(provider: str) -> dict[str, Any]:
                                 break
                         if plant_ok:
                             statuses[pid] = "ok"
-                        else:
-                            # Al terminar: si no insertó nada OK y no fue NO_TABLE/NO_TAB, es FAIL.
-                            if not st.get("running"):
-                                statuses[pid] = "fail"
+                        elif not st.get("running"):
+                            statuses[pid] = "fail"
+
                 finally:
                     conn.close()
             except Exception:
