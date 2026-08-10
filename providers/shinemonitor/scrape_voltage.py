@@ -343,8 +343,8 @@ def _tree_is_empty(tree: Locator) -> bool:
 def _ensure_tree_loaded(
     page: Page,
     *,
-    timeout_ms: int = 15_000,
-    retries: int = 1,
+    timeout_ms: int = 20_000,
+    retries: int = 2,
     run_dir: Path | None = None,
     debug_name: str = "tree-load-error",
 ) -> Locator:
@@ -355,9 +355,9 @@ def _ensure_tree_loaded(
         try:
             tree.wait_for(state="attached", timeout=timeout_ms)
             page.wait_for_selector(
-                "#plant_tree li.jstree-node, #plant_tree li, #plant_tree div",
+                "#plant_tree li.jstree-node",
                 state="attached",
-                timeout=8_000,
+                timeout=timeout_ms,
             )
             if tree.locator("li.jstree-node").count() > 0:
                 return tree
@@ -375,7 +375,7 @@ def _ensure_tree_loaded(
                     tab = page.locator(sel).first
                     if tab.is_visible():
                         tab.click()
-                        page.wait_for_timeout(1000)
+                        page.wait_for_timeout(1500)
                         break
                 except Exception:
                     pass

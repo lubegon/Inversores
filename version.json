@@ -1,5 +1,5 @@
 {
-  "version": "2.9.2",
+  "version": "2.9.3",
   "release_date": "2026-08-10",
-  "notes": "Optimizacion de la seleccion de plantas y navegacion nativa en ShineMonitor eliminando recargas artificiales."
+  "notes": "Ajuste de espera explicita de nodos li.jstree-node en ShineMonitor para asegurar la carga completa de datos AJAX."
 }
