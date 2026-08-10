@@ -16,7 +16,7 @@ from playwright.sync_api import Locator, Page, TimeoutError as PlaywrightTimeout
 
 from providers.supabase_client import save_device, save_plant, save_telemetry_reading
 
-SHINE_URL = "http://www.shinemonitor.com/"
+SHINE_URL = "https://shinemonitor.com/index_en.html"
 MAX_ATTEMPTS = 5
 
 
@@ -388,7 +388,7 @@ def _select_plant_and_load_tree(
     retries: int = 1,
 ) -> tuple[str | None, Locator]:
 
-    dropdown = page.locator("span.k-dropdown-wrap, #headPlos div > a, select#plant_select, #headPlos a").first
+    dropdown = page.locator("#headPlos > div.logo-container > div > a, #headPlos a, #headPlos, span.k-dropdown-wrap").first
     try:
         dropdown.wait_for(state="attached", timeout=4_000)
     except Exception:
@@ -429,65 +429,36 @@ def _select_plant_and_load_tree(
         page.wait_for_timeout(500)
 
     item_selectors = [
-        f"#plant_select_listbox li[data-val='{plant.plant_id}']",
-        f"#plantlist li#plant_{plant.plant_id} a",
         f"#plantlist li#plant_{plant.plant_id}",
+        f"#plantlist li#plant_{plant.plant_id} a",
         f"li#plant_{plant.plant_id}",
+        f"#plant_select_listbox li[data-val='{plant.plant_id}']",
         f"li[data-val='{plant.plant_id}']",
-        f"a[data-val='{plant.plant_id}']",
     ]
     item = page.locator(", ".join(item_selectors)).first
 
-    if not item.is_visible():
+    if item.count() == 0:
+        page.wait_for_timeout(300)
 
-        def search_scroll() -> bool:
-            try:
-                if item.count() > 0:
-                    item.scroll_into_view_if_needed(timeout=2_000)
-                    if item.is_visible():
-                        return True
-            except Exception:
-                pass
+    if item.count() == 0:
+        _dump_debug(page, run_dir, f"{plant.plant_id}-dropdown-item-not-found")
+        raise RuntimeError(
+            f"No se encontró la plant_id {plant.plant_id} en el combo de plantas (#plantlist / #plant_select_listbox)"
+        )
 
-            for container_sel in ("#plant_select_listbox .k-list-scroller", "#plantlist", "#plantlist > ul", ".k-list-scroller"):
-                container = page.locator(container_sel).first
-                if container.is_visible():
-                    for step in range(35):
-                        try:
-                            container.evaluate("(el) => el.scrollTop = el.scrollTop + (el.clientHeight || 300)")
-                        except Exception:
-                            break
-                        page.wait_for_timeout(100)
-                        try:
-                            if item.count() > 0 and item.is_visible():
-                                return True
-                        except Exception:
-                            pass
+    plant_name = None
+    try:
+        plant_name = (item.inner_text() or "").strip() or None
+    except Exception:
+        pass
 
-                    for ratio in (0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1.0):
-                        try:
-                            container.evaluate("(el, r) => el.scrollTop = el.scrollHeight * r", ratio)
-                        except Exception:
-                            pass
-                        page.wait_for_timeout(150)
-                        try:
-                            if item.count() > 0:
-                                item.scroll_into_view_if_needed(timeout=1_000)
-                                if item.is_visible():
-                                    return True
-                        except Exception:
-                            pass
-            return False
-
-        found = search_scroll()
-        if not found:
-            _dump_debug(page, run_dir, f"{plant.plant_id}-dropdown-item-not-visible")
-            raise RuntimeError(
-                f"No se encontró la plant_id {plant.plant_id} en el combo de plantas (#plantlist / #plant_select_listbox)"
-            )
-
-    plant_name = (item.inner_text() or "").strip() or None
-    item.click()
+    try:
+        item.evaluate("el => { if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
+    except Exception:
+        try:
+            page.evaluate(f"getPlantId('plant_{plant.plant_id}')")
+        except Exception:
+            item.click(force=True)
 
     tree = _ensure_tree_loaded(
         page,

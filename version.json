@@ -1,5 +1,5 @@
 {
-  "version": "2.5.3",
+  "version": "2.6.0",
   "release_date": "2026-08-09",
-  "notes": "Corrección de la función de limpieza de logs del sistema (clear_session_logs) e inactivación de sondeo automático tras vaciar."
+  "notes": "Rediseño completo de ShineMonitor con navegación index_en.html, toggle #headPlos e inyección Javascript directa en getPlantId para selección instantánea de plantas sin timeouts."
 }
