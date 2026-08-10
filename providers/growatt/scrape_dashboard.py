@@ -271,6 +271,22 @@ def main() -> None:
             log.step(f"Lanzando browser (headless={headless})")
             browser = launch_browser(p, headless=headless)
             context = browser.new_context(storage_state=str(storage_state_path))
+            if headless:
+                def _block_unnecessary_resources(route):
+                    try:
+                        req = route.request
+                        res_type = (req.resource_type or "").lower()
+                        if res_type in ["image", "media", "font"]:
+                            return route.abort()
+                        url = (req.url or "").lower()
+                        if any(ext in url for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf"]):
+                            return route.abort()
+                    except Exception:
+                        pass
+                    return route.continue_()
+
+                context.route("**/*", _block_unnecessary_resources)
+
             page = context.new_page()
             page.set_default_timeout(30_000)
             page.set_default_navigation_timeout(60_000)

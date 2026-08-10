@@ -957,6 +957,22 @@ def main() -> None:
             else:
                 context = browser.new_context()
 
+            if headless:
+                def _block_unnecessary_resources(route):
+                    try:
+                        req = route.request
+                        res_type = (req.resource_type or "").lower()
+                        if res_type in ["image", "media", "font"]:
+                            return route.abort()
+                        url = (req.url or "").lower()
+                        if any(ext in url for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf", ".mp4", ".webm"]):
+                            return route.abort()
+                    except Exception:
+                        pass
+                    return route.continue_()
+
+                context.route("**/*", _block_unnecessary_resources)
+
             page = context.new_page()
             page.set_default_timeout(default_timeout_ms)
             page.set_default_navigation_timeout(nav_timeout_ms)

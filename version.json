@@ -1,5 +1,5 @@
 {
-  "version": "2.6.4",
+  "version": "2.7.0",
   "release_date": "2026-08-09",
-  "notes": "Fecha y hora completa en el panel Supabase Live Activity Feed y boton 'Limpiar Feed' para vaciar actividades registradas."
+  "notes": "Optimización ultra-rápida de scrapers (ShineMonitor, Growatt y Values) con interceptación y bloqueo de fuentes, imágenes y recursos pesados en modo headless."
 }

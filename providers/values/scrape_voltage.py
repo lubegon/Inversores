@@ -781,7 +781,7 @@ def main() -> None:
         browser = launch_browser(p, headless=headless)
         context = browser.new_context(storage_state=str(storage_state_path))
 
-        fast_mode = env_flag("VALUES_FAST", False)
+        fast_mode = env_flag("VALUES_FAST", headless)
         if fast_mode:
             print("VALUES_FAST=1: bloqueando images/fonts/media para acelerar", flush=True)
 
