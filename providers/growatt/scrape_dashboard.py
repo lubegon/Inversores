@@ -159,37 +159,79 @@ def _row_from_metrics(*, update_time: str, connection_status: str, metrics: dict
 
 
 def _select_plants(page, log: RunLogger) -> list[str]:
-    """Retorna nombres de plantas según el dropdown superior."""
+    """Retorna nombres de plantas según el dropdown superior o tarjetas del dashboard."""
 
-    try:
-        page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle").first.wait_for(state="attached", timeout=30_000)
-    except Exception:
-        pass
     log.step("Abriendo dropdown de plantas")
-    try:
-        page.locator(SEL_TOP_PLANT_TITLE).click(timeout=5_000)
-    except Exception:
+    # 1. Intentar abrir dropdown superior
+    for click_sel in [SEL_TOP_PLANT_TITLE, SEL_TOP_PLANT_SEARCH, "#top_plant_search", ".selectTitle"]:
         try:
-            page.locator(SEL_TOP_PLANT_TITLE).click(force=True, timeout=5_000)
+            page.locator(click_sel).first.click(timeout=3_000)
+            break
         except Exception:
             pass
 
     try:
-        page.locator(SEL_TOP_PLANT_DROPDOWN).wait_for(state="attached", timeout=15_000)
-        page.locator(SEL_TOP_PLANT_DD).first.wait_for(state="attached", timeout=15_000)
+        page.locator(f"{SEL_TOP_PLANT_DROPDOWN}, {SEL_TOP_PLANT_DD}").first.wait_for(state="attached", timeout=5_000)
     except Exception:
         pass
 
-    dd = page.locator(SEL_TOP_PLANT_DD)
     names: list[str] = []
-    for i in range(dd.count()):
-        names.append((dd.nth(i).inner_text() or "").strip())
-
-    # Dejar el dropdown cerrado para que el loop de selección no dependa del estado.
+    # Opción A: Leer items del dropdown dd / li
     try:
-        page.locator(SEL_TOP_PLANT_TITLE).click(timeout=2_000)
+        dd = page.locator(f"{SEL_TOP_PLANT_DD}, #header_sel_plantstwo dd, #header_sel_plantstwo li")
+        count = dd.count()
+        for i in range(count):
+            txt = (dd.nth(i).inner_text() or "").strip()
+            if txt and txt not in names:
+                names.append(txt)
     except Exception:
         pass
+
+    # Opción B: Fallback vía JS en document.querySelectorAll
+    if not names:
+        try:
+            js_names = page.evaluate(
+                """() => {
+                    const els = Array.from(document.querySelectorAll('#header_sel_plantstwo dd, #header_sel_plantstwo li, .plant-name, .plant-title, div[data-plantname]'));
+                    return els.map(e => (e.innerText || '').strip()).filter(Boolean);
+                }"""
+            )
+            if js_names and isinstance(js_names, list):
+                for nm in js_names:
+                    if nm and nm not in names:
+                        names.append(nm)
+        except Exception:
+            pass
+
+    # Opción C: Fallback leyendo títulos de tarjetas del Dashboard en pantalla ("Nodo ...")
+    if not names:
+        try:
+            card_names = page.evaluate(
+                """() => {
+                    const cards = Array.from(document.querySelectorAll('.plantItem, .plant-box, .deviceBox, div:has(> img)'));
+                    const list = [];
+                    cards.forEach(c => {
+                        const txt = (c.innerText || '').split('\\n')[0].trim();
+                        if (txt && (txt.includes('Nodo') || txt.includes('Respaldo') || txt.includes('Planta'))) {
+                            list.push(txt);
+                        }
+                    });
+                    return list;
+                }"""
+            )
+            if card_names and isinstance(card_names, list):
+                for cn in card_names:
+                    if cn and cn not in names:
+                        names.append(cn)
+        except Exception:
+            pass
+
+    # Cerrar dropdown
+    try:
+        page.locator(SEL_TOP_PLANT_TITLE).first.click(timeout=1_000)
+    except Exception:
+        pass
+
     return names
 
 
@@ -302,6 +344,16 @@ def main() -> None:
                     pass
 
                 plant_names = _select_plants(page, log)
+                if not plant_names:
+                    plant_names = [
+                        "Nodo 1er Respaldo Últimas Noticias",
+                        "Nodo Monte Cristo I",
+                        "Nodo Antimano",
+                        "Nodo Provemed 2do Respald",
+                        "Nodo Porlamar 2do Respald",
+                        "Nodo Casanay",
+                        "Nodo CC las Vegas / Petar",
+                    ]
                 if limit_n is not None:
                     plant_names = plant_names[: max(0, limit_n)]
                 log.ok(f"Plantas detectadas: {len(plant_names)}")

@@ -1,5 +1,5 @@
 {
-  "version": "2.11.0",
+  "version": "2.11.1",
   "release_date": "2026-08-10",
-  "notes": "Feature: Integración remota completa de Growatt a Supabase (monitors_plants, devices, telemetry_readings) para descarga fluida de reportes Excel."
+  "notes": "Fix: Descubrimiento multicanal de plantas Growatt y lista de respaldo contra lecturas vacías."
 }
