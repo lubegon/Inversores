@@ -98,3 +98,4 @@
 {"timestamp": "2026-08-10T11:50:54.918304", "action": "insert_event", "status": "success", "detail": "Evento de planta 214436: RBS Mecedores: TREE_NOT_LOADED: El árbol #plant_tree no cargó nodos jstree", "provider": "shinemonitor"}
 {"timestamp": "2026-08-10T12:02:52.103046", "action": "insert_event", "status": "success", "detail": "Evento de planta 214436: RBS Mecedores: TREE_NOT_LOADED: El árbol #plant_tree no cargó nodos jstree", "provider": "shinemonitor"}
 {"timestamp": "2026-08-10T12:06:48.441613", "action": "insert_event", "status": "success", "detail": "Evento de planta 214436: RBS Mecedores: TREE_NOT_LOADED: El árbol #plant_tree no cargó nodos jstree", "provider": "shinemonitor"}
+{"timestamp": "2026-08-10T15:24:40.682821", "action": "upsert_plant", "status": "success", "detail": "Planta test guardada", "provider": "shinemonitor"}

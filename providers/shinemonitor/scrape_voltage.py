@@ -9,6 +9,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
 from typing import Any, Iterable
 
 from dotenv import load_dotenv
@@ -1412,7 +1414,7 @@ def _process_sync_queue() -> None:
     total = len(_SYNC_QUEUE)
     print(f"\nIniciando sincronizacion con Supabase ({total} elementos)...", flush=True)
     
-    status_file = Path("storage") / "sync_status.json"
+    status_file = (BASE_DIR / "storage" / "sync_status.json")
     status_file.parent.mkdir(parents=True, exist_ok=True)
     
     def _update_status(current: int):
@@ -1477,7 +1479,7 @@ def _process_sync_queue() -> None:
     _update_status(total)
     try:
         data = json.loads(status_file.read_text(encoding="utf-8"))
-        data["status"] = "idle"
+        data["status"] = "completed"
         status_file.write_text(json.dumps(data), encoding="utf-8")
     except Exception:
         pass
