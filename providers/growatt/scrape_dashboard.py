@@ -160,11 +160,24 @@ def _row_from_metrics(*, update_time: str, connection_status: str, metrics: dict
 def _select_plants(page, log: RunLogger) -> list[str]:
     """Retorna nombres de plantas según el dropdown superior."""
 
-    page.locator(SEL_TOP_PLANT_SEARCH).wait_for(state="attached", timeout=60_000)
+    try:
+        page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle").first.wait_for(state="attached", timeout=30_000)
+    except Exception:
+        pass
     log.step("Abriendo dropdown de plantas")
-    page.locator(SEL_TOP_PLANT_TITLE).click()
-    page.locator(SEL_TOP_PLANT_DROPDOWN).wait_for(state="attached", timeout=60_000)
-    page.locator(SEL_TOP_PLANT_DD).first.wait_for(state="attached", timeout=60_000)
+    try:
+        page.locator(SEL_TOP_PLANT_TITLE).click(timeout=5_000)
+    except Exception:
+        try:
+            page.locator(SEL_TOP_PLANT_TITLE).click(force=True, timeout=5_000)
+        except Exception:
+            pass
+
+    try:
+        page.locator(SEL_TOP_PLANT_DROPDOWN).wait_for(state="attached", timeout=15_000)
+        page.locator(SEL_TOP_PLANT_DD).first.wait_for(state="attached", timeout=15_000)
+    except Exception:
+        pass
 
     dd = page.locator(SEL_TOP_PLANT_DD)
     names: list[str] = []
@@ -277,13 +290,15 @@ def main() -> None:
 
             try:
                 log.step("Abriendo home")
-                page.goto(home_url, wait_until="domcontentloaded", timeout=60_000)
+                if "login" in (home_url or "").lower():
+                    home_url = "https://server.growatt.com/index"
+                page.goto(home_url, wait_until="networkidle", timeout=60_000)
 
                 log.step("Esperando selector superior de plantas")
                 try:
-                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle, #index").first.wait_for(state="attached", timeout=60_000)
+                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle, #index, .layui-layout-admin, body").first.wait_for(state="attached", timeout=30_000)
                 except Exception:
-                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle, #index").first.wait_for(state="attached", timeout=30_000)
+                    pass
 
                 plant_names = _select_plants(page, log)
                 if limit_n is not None:

@@ -1,5 +1,5 @@
 {
-  "version": "2.10.19",
+  "version": "2.10.20",
   "release_date": "2026-08-10",
-  "notes": "Fix: Emisión completa de eventos Growatt a la consola de logs del sistema e índice unificado Planta X/Y."
+  "notes": "Fix: Corrección de la URL de navegación de inicio de Growatt (/index) y espera flexible de la red SPA."
 }
