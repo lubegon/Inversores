@@ -1,1 +1,3 @@
 {"timestamp": "2026-08-09T21:49:50.029191", "action": "insert_telemetry", "status": "success", "detail": "Lectura de TEST_INV_01 enviada", "provider": "test"}
+{"timestamp": "2026-08-09T22:12:31.150497", "action": "upsert_plant", "status": "success", "detail": "Planta Plant Test guardada", "provider": "shinemonitor"}
+{"timestamp": "2026-08-09T22:12:31.304387", "action": "upsert_device", "status": "success", "detail": "Dispositivo RBS Mecedores guardado", "provider": "shinemonitor"}

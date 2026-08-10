@@ -1,5 +1,5 @@
 {
-  "version": "2.4.2",
+  "version": "2.4.3",
   "release_date": "2026-08-09",
-  "notes": "Incorporación del visor de Logs del Sistema y Supabase en el Dashboard WebUI con consola en vivo y filtros por categoría."
+  "notes": "Corrección crítica de orden de parámetros en save_plant, save_device y save_plant_event para sincronización perfecta de ShineMonitor en Supabase."
 }

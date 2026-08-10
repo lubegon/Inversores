@@ -190,7 +190,12 @@ def _upsert_meta_plant(
         """,
         (plant_id, plant_name, now),
     )
-    save_plant(plant_id, plant_name, "shinemonitor", metadata={"updated_at": now})
+    save_plant(
+        provider="shinemonitor",
+        plant_id=plant_id,
+        name=plant_name or str(plant_id),
+        metadata={"updated_at": now},
+    )
 
 
 def _upsert_meta_device(
@@ -215,10 +220,10 @@ def _upsert_meta_device(
         (device_key, plant_id, device_name, table_name, now),
     )
     save_device(
-        device_key,
-        plant_id,
-        device_name,
-        "shinemonitor",
+        provider="shinemonitor",
+        plant_id=plant_id,
+        device_key=device_key,
+        device_name=device_name,
         metadata={"table_name": table_name, "updated_at": now},
     )
 
@@ -238,6 +243,14 @@ def _insert_plant_event(
         VALUES (?, ?, ?, ?, ?)
         """,
         (captured_at, plant_id, plant_name, status, status_detail),
+    )
+    from providers.supabase_client import save_plant_event
+    save_plant_event(
+        provider="shinemonitor",
+        plant_id=plant_id,
+        event_type=status,
+        message=f"{plant_name or plant_id}: {status_detail or status}",
+        inserted_at=captured_at,
     )
 
 
@@ -770,11 +783,14 @@ def _insert_voltage_reading(
     if isinstance(parsed_cells, dict):
         metrics.update(parsed_cells)
 
+    status = "OK" if (update_time or any(v is not None for v in voltages.values())) else "NO_DATA"
+
     save_telemetry_reading(
         device_key=device_key,
         plant_id=plant_id,
         provider="shinemonitor",
-        update_time=update_time,
+        update_time=update_time or "",
+        status=status,
         metrics=metrics,
         raw_data=raw_data,
         inserted_at=captured_at,
