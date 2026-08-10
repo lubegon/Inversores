@@ -1,0 +1,11 @@
+{
+  "source": "shinemonitor",
+  "captured_at": "2026-08-10T15:30:31.240920+00:00",
+  "plant_id": "214436",
+  "plant_name": "RBS Mecedores",
+  "inverter_present": true,
+  "devices_clicked": 1,
+  "notes": [
+    "Monitores bajo Inverter: 1"
+  ]
+}

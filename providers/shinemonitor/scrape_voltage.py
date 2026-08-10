@@ -359,7 +359,8 @@ def _ensure_tree_loaded(
                 state="attached",
                 timeout=8_000,
             )
-            return tree
+            if tree.locator("li.jstree-node").count() > 0:
+                return tree
         except Exception:
             pass
 
@@ -369,6 +370,11 @@ def _ensure_tree_loaded(
                 page.wait_for_selector("#plant_tree", state="attached", timeout=timeout_ms)
             except Exception:
                 pass
+
+    if tree.locator("li.jstree-node").count() == 0:
+        if run_dir:
+            _dump_debug(page, run_dir, debug_name)
+        raise RuntimeError("TREE_NOT_LOADED: El árbol #plant_tree no cargó nodos jstree")
 
     return tree
 
@@ -462,6 +468,35 @@ def _select_plant_and_load_tree(
             item.evaluate("el => { if (typeof currIndex !== 'undefined') currIndex = 3; if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
         except Exception:
             item.click(force=True)
+
+    page.wait_for_timeout(500)
+
+    # Si la URL sigue en index_en.html (Overview), o si plant_tree no está en el DOM actual,
+    # navegar explícitamente a main.html?plantId=ID para cargar la vista de detalle
+    if "main.html" not in (page.url or "") or page.locator("#plant_tree").count() == 0:
+        main_url = f"https://shinemonitor.com/main.html?plantId={plant.plant_id}"
+        try:
+            page.goto(main_url, wait_until="domcontentloaded", timeout=20_000)
+            page.wait_for_timeout(500)
+        except Exception:
+            pass
+
+    # Asegurar que la pestaña Device Management esté visible y seleccionada si existe
+    dev_tab_selectors = [
+        "#plantTab a:has-text('Device Management')",
+        "#plantTab a:has-text('Gestión de dispositivos')",
+        "#plantTab > li:nth-child(4) > a",
+        ".k-tabstrip-items li:has-text('Device Management')",
+    ]
+    for sel in dev_tab_selectors:
+        try:
+            tab = page.locator(sel).first
+            if tab.is_visible():
+                tab.click()
+                page.wait_for_timeout(300)
+                break
+        except Exception:
+            pass
 
     tree = _ensure_tree_loaded(
         page,
@@ -1014,6 +1049,20 @@ def main() -> None:
 
                     inverter_count, device_anchors = _collect_inverters_and_device_anchors(tree, plant_id=plant.plant_id)
                     if inverter_count == 0:
+                        if tree.locator("li.jstree-node").count() == 0:
+                            print("  - TREE_LOAD_ERROR", flush=True)
+                            _insert_plant_event(
+                                conn,
+                                captured_at=captured_at,
+                                plant_id=plant.plant_id,
+                                plant_name=plant_name,
+                                status="TREE_LOAD_ERROR",
+                                status_detail="No se cargaron nodos jstree en el árbol de la planta",
+                            )
+                            conn.commit()
+                            _dump_debug(page, run_dir, f"{plant.plant_id}-tree-empty")
+                            continue
+
                         print("  - NO_INVERTER", flush=True)
                         _insert_plant_event(
                             conn,
