@@ -1,5 +1,5 @@
 {
-  "version": "2.10.15",
+  "version": "2.10.16",
   "release_date": "2026-08-10",
-  "notes": "Fix: Eliminación de bloqueo agresivo de recursos y auto-recuperación de sesión expirada para Growatt."
+  "notes": "Fix: Corrección del Status Grid de Growatt (preservación de celdas OK en verde tras completar raspado exitoso)."
 }

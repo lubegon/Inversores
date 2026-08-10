@@ -2041,7 +2041,7 @@ _re_sm_plant = re.compile(r"\bPlant\s+(\d+)\b", re.IGNORECASE)
 _re_sm_fail = re.compile(r"\b(NO_TABLE|NO_TAB|NO_DATA|NO_DATA_TODAY)\b|Sin\s+datos\s+hoy", re.IGNORECASE)
 
 _re_gw_plant = re.compile(r"\bPlanta\s+(\d+)\s*/\s*(\d+)\b", re.IGNORECASE)
-_re_gw_ok = re.compile(r"\bOK:\s*SQLite:\s*insertado\b", re.IGNORECASE)
+_re_gw_ok = re.compile(r"\bOK:\s*SQLite:\s*insertado\b|\[OK\]", re.IGNORECASE)
 _re_gw_err = re.compile(r"\b(ERROR|EXCEPTION|Traceback)\b", re.IGNORECASE)
 
 _re_vals_item = re.compile(r"^\[(\d+)\s*/\s*(\d+)\]", re.IGNORECASE)
@@ -2496,10 +2496,13 @@ def _update_job_live_grid(provider: str, job: Job) -> None:
                     if m:
                         idx = str(int(m.group(1)))
                         _grid_switch_current(job, idx)
-                        continue
 
-                    if _re_gw_ok.search(line) and job.grid_current:
-                        _grid_set_status(job, job.grid_current, "ok")
+                    if _re_gw_ok.search(line):
+                        pid = job.grid_current
+                        if m:
+                            pid = str(int(m.group(1)))
+                        if pid:
+                            _grid_set_status(job, pid, "ok")
                         continue
 
                     if _re_gw_err.search(line) and job.grid_current:
@@ -3911,12 +3914,12 @@ def _finalize_run(provider: str, job: Job) -> None:
             # Cerrar último target si quedó en retry.
             if job.grid_current and (job.grid_status.get(job.grid_current) == "retry"):
                 job.grid_status[job.grid_current] = "fail"
-            # Convertir pending/retry a fail en cierre.
+            # Convertir solo pending/retry a fail en cierre (preservando OK).
             for t in targets:
                 stt = (job.grid_status.get(t) or "pending").strip()
                 if stt in ("pending", "retry"):
                     job.grid_status[t] = "fail"
-            items = [{"plant_id": t, "status": (job.grid_status.get(t) or "fail")} for t in targets]
+            items = [{"plant_id": t, "status": (job.grid_status.get(t) or "pending")} for t in targets]
             ok = sum(1 for p in items if p["status"] == "ok")
             fail = sum(1 for p in items if p["status"] == "fail")
             retry = sum(1 for p in items if p["status"] == "retry")
