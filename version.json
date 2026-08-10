@@ -1,5 +1,5 @@
 {
-  "version": "2.10.12",
+  "version": "2.10.13",
   "release_date": "2026-08-10",
-  "notes": "Fix: Secuencia explícita de clicks de envío e inspección avanzada de elementos de navegación en Growatt."
+  "notes": "Fix: Validación exitosa del panel principal de Growatt (Total Generation / All Plants) en la imagen de captura tras el login."
 }

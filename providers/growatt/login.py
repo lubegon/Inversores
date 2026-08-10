@@ -143,8 +143,11 @@ def main() -> None:
             login_still_visible = False
             try:
                 current_url = (page.url or "").lower()
-                has_admin = page.locator("#index, .layui-layout-admin, #plantList, .header-container, .main-container, div.nav").count() > 0
-                if "login" not in current_url or has_admin:
+                has_dashboard = (
+                    "login" not in current_url
+                    or page.locator("#index, .layui-layout-admin, #plantList, .header-container, .main-container, div.nav, :has-text('Total Generation'), :has-text('All Plants')").count() > 0
+                )
+                if has_dashboard:
                     login_still_visible = False
                 else:
                     user_el = page.locator(sel_user).first
@@ -152,7 +155,7 @@ def main() -> None:
             except Exception:
                 login_still_visible = False
 
-            if login_still_visible and "login" in (page.url or "").lower():
+            if login_still_visible:
                 log.fail(
                     "Parece que el login no avanzó (sigue visible el formulario). "
                     "Revisa storage/growatt-after-login.png para ver el motivo. "
