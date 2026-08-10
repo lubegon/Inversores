@@ -34,6 +34,7 @@ from playwright.sync_api import sync_playwright
 
 from .common import RunLogger, dump_debug, env_flag, launch_browser
 from .voltage_sqlite import GrowattRow, connect_db, ensure_monitor_table, insert_monitor_row, monitor_table_name
+from providers.supabase_client import save_device, save_plant, save_telemetry_reading
 
 DEFAULT_HOME_URL = "https://server.growatt.com/"
 
@@ -373,6 +374,44 @@ def main() -> None:
                         insert_monitor_row(conn, table_name=table_name, row=row.as_list())
                         conn.commit()
                         log.ok(f"Planta {idx+1}/{len(plant_names)}: SQLite insertado en {table_name}")
+
+                        # Sincronización remota con Supabase PostgreSQL
+                        try:
+                            dev_key = device_serial or table_name
+                            save_plant(
+                                provider="growatt",
+                                plant_id=str(idx + 1),
+                                name=plant_name,
+                                metadata={"table_name": table_name, "device_serial": device_serial},
+                            )
+                            save_device(
+                                provider="growatt",
+                                plant_id=str(idx + 1),
+                                device_key=dev_key,
+                                device_name=monitor_name,
+                                device_type="Inverter",
+                                metadata={"table_name": table_name},
+                            )
+                            telemetry_metrics = {
+                                "battery_voltage": row.battery_voltage,
+                                "pv1_pv2_voltage": row.pv1_pv2_voltage,
+                                "pv1_pv2_recharging_current": row.pv1_pv2_recharging_current,
+                                "total_charge_current": row.total_charge_current,
+                                "ac_input_voltage_frequency": row.ac_input_voltage_frequency,
+                                "ac_output_voltage_frequency": row.ac_output_voltage_frequency,
+                                "table_name": table_name,
+                            }
+                            save_telemetry_reading(
+                                provider="growatt",
+                                device_key=dev_key,
+                                update_time=update_time or _utc_now_iso(),
+                                status=conn_status or "Online",
+                                metrics=telemetry_metrics,
+                                plant_id=str(idx + 1),
+                            )
+                        except Exception as supa_err:
+                            log.warn(f"Supabase sync warning (Planta {plant_name}): {supa_err}")
+
                         try:
                             from providers.system_logger import log_sys_event
                             log_sys_event("INFO", "SCRAPER", f"[OK] Planta {idx+1}/{len(plant_names)}: {plant_name} | Tabla: {table_name}")

@@ -1,5 +1,5 @@
 {
-  "version": "2.10.20",
+  "version": "2.11.0",
   "release_date": "2026-08-10",
-  "notes": "Fix: Corrección de la URL de navegación de inicio de Growatt (/index) y espera flexible de la red SPA."
+  "notes": "Feature: Integración remota completa de Growatt a Supabase (monitors_plants, devices, telemetry_readings) para descarga fluida de reportes Excel."
 }
