@@ -14,7 +14,9 @@ from typing import Any, Iterable
 from dotenv import load_dotenv
 from playwright.sync_api import Locator, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
-from providers.supabase_client import save_device, save_plant, save_telemetry_reading
+from providers.supabase_client import save_device, save_plant, save_telemetry_reading, save_plant_event
+
+_SYNC_QUEUE: list[dict[str, Any]] = []
 
 SHINE_URL = "https://shinemonitor.com/index_en.html"
 MAX_ATTEMPTS = 5
@@ -190,12 +192,13 @@ def _upsert_meta_plant(
         """,
         (plant_id, plant_name, now),
     )
-    save_plant(
-        provider="shinemonitor",
-        plant_id=plant_id,
-        name=plant_name or str(plant_id),
-        metadata={"updated_at": now},
-    )
+    _SYNC_QUEUE.append({
+        "type": "plant",
+        "provider": "shinemonitor",
+        "plant_id": plant_id,
+        "name": plant_name or str(plant_id),
+        "metadata": {"updated_at": now},
+    })
 
 
 def _upsert_meta_device(
@@ -219,13 +222,14 @@ def _upsert_meta_device(
         """,
         (device_key, plant_id, device_name, table_name, now),
     )
-    save_device(
-        provider="shinemonitor",
-        plant_id=plant_id,
-        device_key=device_key,
-        device_name=device_name,
-        metadata={"table_name": table_name, "updated_at": now},
-    )
+    _SYNC_QUEUE.append({
+        "type": "device",
+        "provider": "shinemonitor",
+        "plant_id": plant_id,
+        "device_key": device_key,
+        "device_name": device_name,
+        "metadata": {"table_name": table_name, "updated_at": now},
+    })
 
 
 def _insert_plant_event(
@@ -244,14 +248,14 @@ def _insert_plant_event(
         """,
         (captured_at, plant_id, plant_name, status, status_detail),
     )
-    from providers.supabase_client import save_plant_event
-    save_plant_event(
-        provider="shinemonitor",
-        plant_id=plant_id,
-        event_type=status,
-        message=f"{plant_name or plant_id}: {status_detail or status}",
-        inserted_at=captured_at,
-    )
+    _SYNC_QUEUE.append({
+        "type": "event",
+        "provider": "shinemonitor",
+        "plant_id": plant_id,
+        "event_type": status,
+        "message": f"{plant_name or plant_id}: {status_detail or status}",
+        "inserted_at": captured_at,
+    })
 
 
 def _launch_browser(p: Any, *, headless: bool) -> Any:
@@ -924,16 +928,17 @@ def _insert_voltage_reading(
 
     status = "OK" if (update_time or any(v is not None for v in voltages.values())) else "NO_DATA"
 
-    save_telemetry_reading(
-        device_key=device_key,
-        plant_id=plant_id,
-        provider="shinemonitor",
-        update_time=update_time or "",
-        status=status,
-        metrics=metrics,
-        raw_data=raw_data,
-        inserted_at=captured_at,
-    )
+    _SYNC_QUEUE.append({
+        "type": "telemetry",
+        "device_key": device_key,
+        "plant_id": plant_id,
+        "provider": "shinemonitor",
+        "update_time": update_time or "",
+        "status": status,
+        "metrics": metrics,
+        "raw_data": raw_data,
+        "inserted_at": captured_at,
+    })
 
 
 def _load_plants(storage_dir: Path) -> list[PlantRef]:
@@ -1346,6 +1351,56 @@ def main() -> None:
                 browser.close()
     finally:
         conn.close()
+
+    _process_sync_queue()
+
+
+def _process_sync_queue() -> None:
+    if not _SYNC_QUEUE:
+        return
+    
+    print(f"\\nIniciando sincronizacion con Supabase ({len(_SYNC_QUEUE)} elementos)...", flush=True)
+    for item in _SYNC_QUEUE:
+        try:
+            t = item["type"]
+            if t == "plant":
+                save_plant(
+                    provider=item["provider"],
+                    plant_id=item["plant_id"],
+                    name=item["name"],
+                    metadata=item["metadata"],
+                )
+            elif t == "device":
+                save_device(
+                    provider=item["provider"],
+                    plant_id=item["plant_id"],
+                    device_key=item["device_key"],
+                    device_name=item["device_name"],
+                    metadata=item["metadata"],
+                )
+            elif t == "event":
+                save_plant_event(
+                    provider=item["provider"],
+                    plant_id=item["plant_id"],
+                    event_type=item["event_type"],
+                    message=item["message"],
+                    inserted_at=item["inserted_at"],
+                )
+            elif t == "telemetry":
+                save_telemetry_reading(
+                    device_key=item["device_key"],
+                    plant_id=item["plant_id"],
+                    provider=item["provider"],
+                    update_time=item["update_time"],
+                    status=item["status"],
+                    metrics=item["metrics"],
+                    raw_data=item["raw_data"],
+                    inserted_at=item["inserted_at"],
+                )
+        except Exception as e:
+            print(f"Error subiendo a Supabase: {e}", flush=True)
+
+    _SYNC_QUEUE.clear()
 
 
 if __name__ == "__main__":

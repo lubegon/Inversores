@@ -1,5 +1,5 @@
 {
-  "version": "2.9.3",
+  "version": "2.9.4",
   "release_date": "2026-08-10",
-  "notes": "Ajuste de espera explicita de nodos li.jstree-node en ShineMonitor para asegurar la carga completa de datos AJAX."
+  "notes": "Desacoplamiento de la subida a Supabase. Ahora ShineMonitor guarda en memoria y sincroniza al finalizar el scrape, previniendo falsos Timeouts."
 }
