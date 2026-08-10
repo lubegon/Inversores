@@ -1,5 +1,5 @@
 {
-  "version": "2.6.1",
+  "version": "2.6.2",
   "release_date": "2026-08-09",
-  "notes": "Ajuste de estado 'attached' en _ensure_tree_loaded para evitar timeouts de visibilidad CSS en la recarga del árbol de plantas."
+  "notes": "Eliminación de la excepción de tiempo de espera bloqueante en _ensure_tree_loaded para plantas sin inversores o con carga AJAX asíncrona."
 }

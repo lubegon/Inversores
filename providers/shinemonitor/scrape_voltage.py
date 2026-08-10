@@ -343,7 +343,7 @@ def _tree_is_empty(tree: Locator) -> bool:
 def _ensure_tree_loaded(
     page: Page,
     *,
-    timeout_ms: int = 60_000,
+    timeout_ms: int = 15_000,
     retries: int = 1,
     run_dir: Path | None = None,
     debug_name: str = "tree-load-error",
@@ -355,25 +355,22 @@ def _ensure_tree_loaded(
         try:
             tree.wait_for(state="attached", timeout=timeout_ms)
             page.wait_for_selector(
-                "#plant_tree li.jstree-node",
+                "#plant_tree li.jstree-node, #plant_tree li, #plant_tree div",
                 state="attached",
-                timeout=timeout_ms,
+                timeout=8_000,
             )
-            if not _tree_is_empty(tree):
-                return tree
+            return tree
         except Exception:
             pass
 
         if attempt < retries:
-            page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
-            page.wait_for_selector("#plant_tree", state="attached", timeout=timeout_ms)
+            try:
+                page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
+                page.wait_for_selector("#plant_tree", state="attached", timeout=timeout_ms)
+            except Exception:
+                pass
 
-    if run_dir:
-        _dump_debug(page, run_dir, debug_name)
-
-    raise PlaywrightTimeoutError(
-        f"El árbol #plant_tree no cargó elementos tras {retries+1} intentos"
-    )
+    return tree
 
 
 def _select_plant_and_load_tree(
