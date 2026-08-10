@@ -4670,9 +4670,13 @@ def main() -> None:
     host = os.environ.get("WEBUI_HOST", "0.0.0.0")
     port = int(os.environ.get("WEBUI_PORT", "8000"))
 
-    # Inicializar registro del sistema desde el inicio
+    # Limpiar logs de sesión y actividades de Supabase al iniciar el servidor WebUI
     try:
-        from providers.system_logger import SystemLogger
+        path_act = STORAGE_DIR / "supabase_activity.jsonl"
+        if path_act.exists():
+            path_act.write_text("", encoding="utf-8")
+        from providers.system_logger import clear_session_logs, SystemLogger
+        clear_session_logs()
         SystemLogger.get_instance().log_startup()
     except Exception:
         pass

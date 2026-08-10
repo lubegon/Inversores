@@ -35,7 +35,7 @@ class SystemLogger:
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
 
-            s_handler = logging.FileHandler(SESSION_LOG_PATH, encoding="utf-8")
+            s_handler = logging.FileHandler(SESSION_LOG_PATH, mode="w", encoding="utf-8")
             s_handler.setFormatter(formatter)
             self.logger.addHandler(s_handler)
 
