@@ -224,6 +224,7 @@
               <span class="pulse-ring" id="syslog-pulse" style="width: 8px; height: 8px; background: #3b82f6; border-radius: 50%; display: inline-block;"></span>
             </div>
             <div style="display: flex; gap: 8px;">
+              <button class="btn-pro-act" id="btn-copy-syslog" style="font-size: 0.75rem; padding: 4px 10px;">📋 Copiar Logs</button>
               <button class="btn-pro-act" id="btn-refresh-syslog" style="font-size: 0.75rem; padding: 4px 10px;">🔄 Actualizar</button>
               <button class="btn-pro-act" id="btn-clear-syslog" style="font-size: 0.75rem; padding: 4px 10px;">🧹 Limpiar Visor</button>
             </div>
@@ -235,7 +236,7 @@
               <button class="syslog-filter-btn" data-filter="SYSTEM" style="font-size: 0.75rem; padding: 4px 12px; border-radius: 6px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; cursor: pointer; font-weight: 600;">⚙️ Sistema</button>
               <button class="syslog-filter-btn" data-filter="ERROR" style="font-size: 0.75rem; padding: 4px 12px; border-radius: 6px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; cursor: pointer; font-weight: 600;">⚠️ Errores</button>
             </div>
-            <pre class="feed-container" id="syslog-console" style="max-height: 320px; overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; border-radius: 8px; background: #090d16; color: #38bdf8; padding: 14px; border: 1px solid #1e293b; white-space: pre-wrap; word-break: break-all; line-height: 1.4; margin: 0;">Iniciando visor de logs...</pre>
+            <pre class="feed-container" id="syslog-console" style="max-height: 320px; overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; border-radius: 8px; background: #090d16; color: #38bdf8; padding: 14px; border: 1px solid #1e293b; white-space: pre-wrap; word-break: break-all; line-height: 1.4; margin: 0; user-select: text !important; -webkit-user-select: text !important; cursor: text;">Iniciando visor de logs...</pre>
           </div>
         </section>
 

@@ -641,9 +641,31 @@ async function initDashboard(config) {
   setInterval(() => pollSupabaseStatus().catch(() => { }), 3000);
 
   // Visor de Logs del Sistema (Consola en Vivo)
+  const copySyslogBtn = $('#btn-copy-syslog');
   const refreshSyslogBtn = $('#btn-refresh-syslog');
   const clearSyslogBtn = $('#btn-clear-syslog');
   const filterBtns = document.querySelectorAll('#syslog-filters .syslog-filter-btn');
+
+  if (copySyslogBtn) {
+    copySyslogBtn.addEventListener('click', async () => {
+      const consoleEl = $('#syslog-console');
+      if (!consoleEl) return;
+      const text = consoleEl.textContent || '';
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      const origText = copySyslogBtn.textContent;
+      copySyslogBtn.textContent = '✅ ¡Copiado!';
+      setTimeout(() => { copySyslogBtn.textContent = origText; }, 2000);
+    });
+  }
 
   if (refreshSyslogBtn) {
     refreshSyslogBtn.addEventListener('click', () => pollSystemLogs());
