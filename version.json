@@ -1,5 +1,5 @@
 {
-  "version": "2.10.0",
+  "version": "2.10.1",
   "release_date": "2026-08-10",
-  "notes": "Feature: Agregado UI para monitorear sincronización con Supabase (color morado) y panel para auditar/limpiar base de datos remotamente desde Configuración."
+  "notes": "Fix: Corrección del contador de FALLO en vivo durante captura (evita falsos rojos en plantas pendientes)."
 }
