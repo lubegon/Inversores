@@ -5,3 +5,4 @@
 Call log:
   - waiting for locator("span.k-dropdown-wrap").first to be visible
  (shinemonitor)
+[2026-08-09 22:56:21] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 214436: RBS Mecedores: No se encontró la plant_id 214436 en el combo #plant_select_listbox (shinemonitor)

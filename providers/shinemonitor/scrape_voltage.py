@@ -411,32 +411,37 @@ def _select_plant_and_load_tree(
             pass
     page.wait_for_timeout(300)
 
-    item_selector = f"#plant_select_listbox li[data-val='{plant.plant_id}']"
-    item = page.locator(item_selector).first
+    item_selectors = [
+        f"#plant_select_listbox li[data-val='{plant.plant_id}']",
+        f"#plantlist li#plant_{plant.plant_id} a",
+        f"#plantlist li#plant_{plant.plant_id}",
+        f"li#plant_{plant.plant_id}",
+        f"li[data-val='{plant.plant_id}']",
+        f"a[data-val='{plant.plant_id}']",
+    ]
+    item = page.locator(", ".join(item_selectors)).first
 
     if not item.is_visible():
 
         def search_scroll() -> bool:
-            container = page.locator(
-                "#plant_select_listbox .k-list-scroller"
-            ).first
-            if not container.is_visible():
-                return False
-
-            for delta in (300, 600, 1000, 1500, 2000):
-                container.evaluate(
-                    f"(el, d) => el.scrollTop = d", delta
-                )
-                page.wait_for_timeout(200)
-                if item.is_visible():
-                    return True
+            for container_sel in ("#plant_select_listbox .k-list-scroller", "#plantlist", "#plantlist > ul", ".k-list-scroller"):
+                container = page.locator(container_sel).first
+                if container.is_visible():
+                    for delta in (300, 600, 1000, 1500, 2000, 3000, 5000):
+                        try:
+                            container.evaluate("(el, d) => el.scrollTop = d", delta)
+                        except Exception:
+                            pass
+                        page.wait_for_timeout(150)
+                        if item.is_visible():
+                            return True
             return False
 
         found = search_scroll()
         if not found:
             _dump_debug(page, run_dir, f"{plant.plant_id}-dropdown-item-not-visible")
             raise RuntimeError(
-                f"No se encontró la plant_id {plant.plant_id} en el combo #plant_select_listbox"
+                f"No se encontró la plant_id {plant.plant_id} en el combo de plantas (#plantlist / #plant_select_listbox)"
             )
 
     plant_name = (item.inner_text() or "").strip() or None
