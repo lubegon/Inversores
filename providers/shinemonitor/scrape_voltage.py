@@ -377,10 +377,9 @@ def _ensure_tree_loaded(
             for sel in dev_tab_selectors:
                 try:
                     tab = page.locator(sel).first
-                    if tab.is_visible():
-                        tab.click()
-                        page.wait_for_timeout(1500)
-                        break
+                    tab.click(timeout=3000)
+                    page.wait_for_timeout(1500)
+                    break
                 except Exception:
                     pass
 
@@ -501,15 +500,13 @@ def _select_plant_and_load_tree(
         "#plantTab a:has-text('Device Management')",
         "#plantTab a:has-text('Gestión de dispositivos')",
         "#plantTab > li:nth-child(4) > a",
-        ".k-tabstrip-items li:has-text('Device Management')",
     ]
     for sel in dev_tab_selectors:
         try:
             tab = page.locator(sel).first
-            if tab.is_visible():
-                tab.click()
-                page.wait_for_timeout(300)
-                break
+            tab.click(timeout=3000)
+            page.wait_for_timeout(1500)
+            break
         except Exception:
             pass
 

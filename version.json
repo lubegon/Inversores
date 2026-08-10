@@ -1,5 +1,5 @@
 {
-  "version": "2.9.5",
+  "version": "2.9.6",
   "release_date": "2026-08-10",
-  "notes": "Correccion de condicion de carrera en navegacion asincrona de Playwright en ShineMonitor que causaba falsos errores TREE_NOT_LOADED."
+  "notes": "Correccion del falso timeout de TREE_NOT_LOADED. Reemplazo de is_visible() por tab.click(timeout) para obligar al navegador a esperar que la pestaña aparezca en lugar de saltarla inmediatamente."
 }
