@@ -1,5 +1,5 @@
 {
-  "version": "2.10.3",
+  "version": "2.10.4",
   "release_date": "2026-08-10",
-  "notes": "Fix: Corrección de logs/feeds de Supabase y acumulación en vivo de estados OK/FAIL en Shinemonitor."
+  "notes": "Feature: Todos los eventos de extracción (OK, Sin datos hoy, errores) se transmiten en vivo a la consola 'LOGS DEL SISTEMA Y SUPABASE'."
 }

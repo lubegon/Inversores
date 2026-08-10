@@ -258,6 +258,12 @@ def _insert_plant_event(
         "message": f"{plant_name or plant_id}: {status_detail or status}",
         "inserted_at": captured_at,
     })
+    try:
+        from providers.system_logger import log_sys_event
+        level = "WARNING" if status in ("NO_DATA_TODAY", "NO_TABLE", "NO_TAB", "NO_INVERTER", "NO_DEVICES") else ("ERROR" if "ERROR" in status else "INFO")
+        log_sys_event(level, "SCRAPER", f"[{status}] Planta {plant_name or plant_id}: {status_detail or status}")
+    except Exception:
+        pass
 
 
 def _launch_browser(p: Any, *, headless: bool) -> Any:
@@ -978,6 +984,12 @@ def _insert_voltage_reading(
         "raw_data": raw_data,
         "inserted_at": captured_at,
     })
+    try:
+        from providers.system_logger import log_sys_event
+        v_summary = f"R:{voltages.get('r_voltage')} S:{voltages.get('s_voltage')} T:{voltages.get('t_voltage')}"
+        log_sys_event("INFO", "SCRAPER", f"[OK] Extraído {device_name} ({plant_name or plant_id}) | Update: {update_time} | Voltajes: {v_summary}")
+    except Exception:
+        pass
 
 
 def _load_plants(storage_dir: Path) -> list[PlantRef]:
