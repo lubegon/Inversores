@@ -450,10 +450,10 @@ def _select_plant_and_load_tree(
         pass
 
     try:
-        page.evaluate(f"getPlantId('plant_{plant.plant_id}')")
+        page.evaluate(f"try {{ if (typeof currIndex !== 'undefined') currIndex = 3; }} catch (_) {{}}; getPlantId('plant_{plant.plant_id}');")
     except Exception:
         try:
-            item.evaluate("el => { if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
+            item.evaluate("el => { if (typeof currIndex !== 'undefined') currIndex = 3; if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
         except Exception:
             item.click(force=True)
 

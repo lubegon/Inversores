@@ -87,3 +87,5 @@
 {"timestamp": "2026-08-09T23:58:51.182024", "action": "insert_event", "status": "success", "detail": "Evento de planta 214436: RBS Mecedores: No hay Inverter en este Monitor", "provider": "shinemonitor"}
 {"timestamp": "2026-08-10T00:04:50.804364", "action": "upsert_plant", "status": "success", "detail": "Planta RBS Mecedores guardada", "provider": "shinemonitor"}
 {"timestamp": "2026-08-10T00:05:21.123843", "action": "insert_event", "status": "success", "detail": "Evento de planta 214436: RBS Mecedores: No hay Inverter en este Monitor", "provider": "shinemonitor"}
+{"timestamp": "2026-08-10T00:12:49.059575", "action": "upsert_plant", "status": "success", "detail": "Planta RBS Mecedores guardada", "provider": "shinemonitor"}
+{"timestamp": "2026-08-10T00:13:19.726686", "action": "insert_event", "status": "success", "detail": "Evento de planta 214436: RBS Mecedores: No hay Inverter en este Monitor", "provider": "shinemonitor"}
