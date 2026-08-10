@@ -26,4 +26,7 @@ if __name__ == "__main__":
     os.environ.setdefault("GROWATT_LOG_STDOUT", "1")
 
     login_main()
+    print("\n============================================================", flush=True)
+    print("PASO 2: Extraer Dashboard de Plantas Growatt", flush=True)
+    print("============================================================\n", flush=True)
     scrape_main()

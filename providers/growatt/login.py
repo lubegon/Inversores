@@ -159,7 +159,7 @@ def main() -> None:
             except Exception:
                 login_still_visible = False
 
-            if login_still_visible:
+            if login_still_visible and not storage_state_path.exists():
                 log.fail(
                     "Parece que el login no avanzó (sigue visible el formulario). "
                     "Revisa storage/growatt-after-login.png para ver el motivo. "

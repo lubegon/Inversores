@@ -1,5 +1,5 @@
 {
-  "version": "2.10.17",
+  "version": "2.10.18",
   "release_date": "2026-08-10",
-  "notes": "Fix: Eliminación de invocación anidada sync_playwright() evitando el error 'Playwright Sync API inside the asyncio loop'."
+  "notes": "Fix: Garantía de conservación de celdas OK verdes en Growatt y desacoplamiento de salidas stdout de login/scrape."
 }
