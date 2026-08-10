@@ -1,5 +1,5 @@
 {
-  "version": "2.4.5",
+  "version": "2.4.6",
   "release_date": "2026-08-09",
-  "notes": "Manejo silencioso de desconexiones de socket cliente [WinError 10053] (ConnectionAbortedError) en el servidor HTTP WebUI."
+  "notes": "Mejora ultra-resiliente de locators DOM para el selector de plantas de ShineMonitor (span.k-dropdown-wrap, #headPlos)."
 }

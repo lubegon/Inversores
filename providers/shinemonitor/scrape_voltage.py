@@ -388,18 +388,27 @@ def _select_plant_and_load_tree(
     retries: int = 1,
 ) -> tuple[str | None, Locator]:
 
-    dropdown = page.locator("span.k-dropdown-wrap").first
+    dropdown = page.locator("span.k-dropdown-wrap, #headPlos div > a, select#plant_select, #headPlos a").first
     try:
-        dropdown.wait_for(state="visible", timeout=4_000)
+        dropdown.wait_for(state="attached", timeout=4_000)
     except Exception:
         # Si el selector de plantas no está visible (la página navegó fuera o la sesión caducó)
         page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(500)
         if user and password:
             _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
-        dropdown.wait_for(state="visible", timeout=timeout_ms)
+        try:
+            dropdown.wait_for(state="attached", timeout=timeout_ms)
+        except Exception:
+            pass
 
-    dropdown.click()
+    try:
+        dropdown.click(timeout=5_000)
+    except Exception:
+        try:
+            dropdown.click(timeout=5_000, force=True)
+        except Exception:
+            pass
     page.wait_for_timeout(300)
 
     item_selector = f"#plant_select_listbox li[data-val='{plant.plant_id}']"

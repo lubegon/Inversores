@@ -1,3 +1,7 @@
 [2026-08-09 22:02:31] [INFO] [system_logger] [SUPABASE] Prueba de log telemétrico Supabase
 [2026-08-09 22:12:31] [INFO] [system_logger] [SUPABASE] [UPSERT_PLANT] Planta Plant Test guardada (shinemonitor)
 [2026-08-09 22:12:31] [INFO] [system_logger] [SUPABASE] [UPSERT_DEVICE] Dispositivo RBS Mecedores guardado (shinemonitor)
+[2026-08-09 22:42:49] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 214436: RBS Mecedores: Locator.wait_for: Timeout 20000ms exceeded.
+Call log:
+  - waiting for locator("span.k-dropdown-wrap").first to be visible
+ (shinemonitor)
