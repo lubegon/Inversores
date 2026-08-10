@@ -1,5 +1,5 @@
 {
-  "version": "2.9.4",
+  "version": "2.9.5",
   "release_date": "2026-08-10",
-  "notes": "Desacoplamiento de la subida a Supabase. Ahora ShineMonitor guarda en memoria y sincroniza al finalizar el scrape, previniendo falsos Timeouts."
+  "notes": "Correccion de condicion de carrera en navegacion asincrona de Playwright en ShineMonitor que causaba falsos errores TREE_NOT_LOADED."
 }

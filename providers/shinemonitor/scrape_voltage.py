@@ -478,6 +478,8 @@ def _select_plant_and_load_tree(
     except Exception:
         pass
 
+    is_main = "main.html" in (page.url or "")
+
     try:
         page.evaluate(f"try {{ if (typeof currIndex !== 'undefined') currIndex = 3; }} catch (_) {{}}; getPlantId('plant_{plant.plant_id}');")
     except Exception:
@@ -486,7 +488,13 @@ def _select_plant_and_load_tree(
         except Exception:
             item.click(force=True)
 
-    page.wait_for_timeout(500)
+    if not is_main:
+        try:
+            page.wait_for_url("**/main.html*", timeout=15_000)
+        except Exception:
+            pass
+
+    page.wait_for_timeout(1000)
 
     # Asegurar que la pestaña Device Management esté visible y seleccionada si existe
     dev_tab_selectors = [
