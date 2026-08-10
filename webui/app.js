@@ -536,12 +536,14 @@ async function initDashboard(config) {
           if (sbStatusIcon) {
             sbStatusIcon.innerHTML = `<i data-lucide="${iconName}"></i>`;
             sbStatusIcon.style.color = iconColor;
+            if (window.lucide) window.lucide.createIcons();
           }
         } else {
           hmSupabase.innerHTML = `<span class="status-dot error"></span> Desconectado`;
           if (sbStatusIcon) {
             sbStatusIcon.innerHTML = `<i data-lucide="cloud-off"></i>`;
             sbStatusIcon.style.color = '#ef4444';
+            if (window.lucide) window.lucide.createIcons();
           }
         }
       }
