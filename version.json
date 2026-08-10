@@ -1,5 +1,5 @@
 {
-  "version": "2.10.10",
+  "version": "2.10.11",
   "release_date": "2026-08-10",
-  "notes": "Fix: Mejora en el envío del formulario de login de Growatt (Enter fallback, manejo de modales/anuncios e inspección de redirección SPA)."
+  "notes": "Fix: Corrección definitiva del login de Growatt evitando bloqueos de 60s y falsos Cód 3 mediante detección activa de SPA DOM."
 }

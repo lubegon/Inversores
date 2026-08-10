@@ -103,50 +103,44 @@ def main() -> None:
 
             log.step("Enviando login")
             try:
-                # Intentar selector principal o fallbacks comunes de Growatt
-                submit_btn = page.locator(sel_submit).first
-                if submit_btn.is_visible():
-                    submit_btn.click()
-                else:
-                    page.locator("button.login-btn, button:has-text('Login'), button:has-text('Sign In'), input[type='submit']").first.click()
-            except Exception:
+                # Intentar presionar enter en el campo de clave o hacer click en el botón visible
+                page.locator(sel_pass).focus()
                 page.locator(sel_pass).press("Enter")
-
-            try:
-                page.wait_for_timeout(3000)
-                page.wait_for_load_state("networkidle", timeout=15_000)
             except Exception:
-                pass
-
-            if sel_home_ready:
-                log.step("Esperando selector de home (GROWATT_SEL_HOME_READY)")
-                page.locator(sel_home_ready).wait_for(state="visible", timeout=60_000)
-            else:
-                # Fallback: Growatt suele quedarse como SPA; esperamos salir de /login.
-                log.step("Esperando salir de /login")
                 try:
-                    page.wait_for_function(
-                        "() => !String(location.pathname || '').includes('login')",
-                        timeout=60_000,
-                    )
+                    page.locator(sel_submit).first.click()
                 except Exception:
-                    # Último recurso: pequeño delay para que el frontend navegue.
-                    page.wait_for_timeout(3000)
+                    page.locator("button.login-btn, button:has-text('Login'), button:has-text('Sign In'), input[type='submit']").first.click()
+
+            # Esperar a que la página reaccione desvaneciendo el formulario o cambiando la URL
+            try:
+                page.wait_for_function(
+                    """() => {
+                        const userInp = document.querySelector('#val_loginAccount');
+                        const isUserVisible = userInp && userInp.offsetWidth > 0 && userInp.offsetHeight > 0;
+                        const isNotLoginUrl = !location.href.includes('/login');
+                        const hasAdmin = !!document.querySelector('#index, .layui-layout-admin, #plantList, .header-container');
+                        return !isUserVisible || isNotLoginUrl || hasAdmin;
+                    }""",
+                    timeout=15_000,
+                )
+            except Exception:
+                page.wait_for_timeout(3000)
 
             # Si hay popups/modales de notificación tras login, intentar cerrar
             try:
-                page.locator("div.layui-layer-close, .pop-close, .notice-close").click(timeout=3000)
+                page.locator("div.layui-layer-close, .pop-close, .notice-close, .layui-layer-btn0").first.click(timeout=3000)
             except Exception:
                 pass
 
             login_still_visible = False
             try:
-                # Si la URL cambió o ya hay elementos de dashboard visible, consideramos login exitoso
                 current_url = (page.url or "").lower()
-                if "login" not in current_url or page.locator("#index, .layui-layout-admin, #plantList").count() > 0:
+                has_admin = page.locator("#index, .layui-layout-admin, #plantList, .header-container").count() > 0
+                if "login" not in current_url or has_admin:
                     login_still_visible = False
                 else:
-                    login_still_visible = page.locator(sel_user).is_visible()
+                    login_still_visible = page.locator(sel_user).first.is_visible()
             except Exception:
                 login_still_visible = False
 
