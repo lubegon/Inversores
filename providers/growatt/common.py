@@ -24,7 +24,7 @@ class RunLogger:
             pass
         self._step = 0
 
-    def _write(self, line: str) -> None:
+    def _write(self, line: str, level: str = "INFO") -> None:
         if self.print_to_stdout:
             print(line, flush=True)
         try:
@@ -32,19 +32,24 @@ class RunLogger:
                 f.write(line + "\n")
         except Exception:
             pass
+        try:
+            from providers.system_logger import log_sys_event
+            log_sys_event(level, "GROWATT", line.strip())
+        except Exception:
+            pass
 
     def step(self, text: str) -> None:
         self._step += 1
-        self._write(f"[{self._step:02d}] {text}")
+        self._write(f"[{self._step:02d}] {text}", level="INFO")
 
     def ok(self, text: str) -> None:
-        self._write(f"     OK: {text}")
+        self._write(f"     OK: {text}", level="INFO")
 
     def warn(self, text: str) -> None:
-        self._write(f"   WARN: {text}")
+        self._write(f"   WARN: {text}", level="WARNING")
 
     def fail(self, text: str) -> None:
-        self._write(f"   FAIL: {text}")
+        self._write(f"   FAIL: {text}", level="ERROR")
 
 
 def env_flag(name: str, default: bool) -> bool:

@@ -3919,7 +3919,7 @@ def _finalize_run(provider: str, job: Job) -> None:
                 stt = (job.grid_status.get(t) or "pending").strip()
                 if stt in ("pending", "retry"):
                     job.grid_status[t] = "fail"
-            items = [{"plant_id": t, "status": (job.grid_status.get(t) or "pending")} for t in targets]
+            items = [{"plant_id": t, "status": (job.grid_status.get(t) or "fail")} for t in targets]
             ok = sum(1 for p in items if p["status"] == "ok")
             fail = sum(1 for p in items if p["status"] == "fail")
             retry = sum(1 for p in items if p["status"] == "retry")

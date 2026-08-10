@@ -1,5 +1,5 @@
 {
-  "version": "2.10.18",
+  "version": "2.10.19",
   "release_date": "2026-08-10",
-  "notes": "Fix: Garantía de conservación de celdas OK verdes en Growatt y desacoplamiento de salidas stdout de login/scrape."
+  "notes": "Fix: Emisión completa de eventos Growatt a la consola de logs del sistema e índice unificado Planta X/Y."
 }

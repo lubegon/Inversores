@@ -357,7 +357,7 @@ def main() -> None:
                         ensure_monitor_table(conn, table_name=table_name)
                         insert_monitor_row(conn, table_name=table_name, row=row.as_list())
                         conn.commit()
-                        log.ok(f"SQLite: insertado en {table_name}")
+                        log.ok(f"Planta {idx+1}/{len(plant_names)}: SQLite insertado en {table_name}")
                         try:
                             from providers.system_logger import log_sys_event
                             log_sys_event("INFO", "SCRAPER", f"[OK] Planta {idx+1}/{len(plant_names)}: {plant_name} | Tabla: {table_name}")
