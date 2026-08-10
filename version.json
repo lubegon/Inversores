@@ -1,5 +1,5 @@
 {
-  "version": "2.10.11",
+  "version": "2.10.12",
   "release_date": "2026-08-10",
-  "notes": "Fix: Corrección definitiva del login de Growatt evitando bloqueos de 60s y falsos Cód 3 mediante detección activa de SPA DOM."
+  "notes": "Fix: Secuencia explícita de clicks de envío e inspección avanzada de elementos de navegación en Growatt."
 }

@@ -102,15 +102,22 @@ def main() -> None:
             page.locator(sel_pass).fill(password)
 
             log.step("Enviando login")
-            try:
-                # Intentar presionar enter en el campo de clave o hacer click en el botón visible
-                page.locator(sel_pass).focus()
-                page.locator(sel_pass).press("Enter")
-            except Exception:
+            clicked = False
+            for sel in [sel_submit, "button.login-btn", "button:has-text('Login')", "button:has-text('Sign In')", "input[type='submit']", ".loginBtn button", "a.btn-login"]:
                 try:
-                    page.locator(sel_submit).first.click()
+                    loc = page.locator(sel).first
+                    if loc.is_visible():
+                        loc.click()
+                        clicked = True
+                        break
                 except Exception:
-                    page.locator("button.login-btn, button:has-text('Login'), button:has-text('Sign In'), input[type='submit']").first.click()
+                    pass
+
+            if not clicked:
+                try:
+                    page.locator(sel_pass).press("Enter")
+                except Exception:
+                    pass
 
             # Esperar a que la página reaccione desvaneciendo el formulario o cambiando la URL
             try:
@@ -136,15 +143,16 @@ def main() -> None:
             login_still_visible = False
             try:
                 current_url = (page.url or "").lower()
-                has_admin = page.locator("#index, .layui-layout-admin, #plantList, .header-container").count() > 0
+                has_admin = page.locator("#index, .layui-layout-admin, #plantList, .header-container, .main-container, div.nav").count() > 0
                 if "login" not in current_url or has_admin:
                     login_still_visible = False
                 else:
-                    login_still_visible = page.locator(sel_user).first.is_visible()
+                    user_el = page.locator(sel_user).first
+                    login_still_visible = user_el.is_visible() and user_el.is_enabled()
             except Exception:
                 login_still_visible = False
 
-            if login_still_visible and "/login" in (page.url or ""):
+            if login_still_visible and "login" in (page.url or "").lower():
                 log.fail(
                     "Parece que el login no avanzó (sigue visible el formulario). "
                     "Revisa storage/growatt-after-login.png para ver el motivo. "
