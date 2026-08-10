@@ -427,11 +427,48 @@ class SupabaseManager:
             # Fallback a URL pública
             url = self.client.storage.from_(self.bucket_name).get_public_url(filename)
             log_supabase_activity("get_download_url", "success", f"Generada URL pública para {filename}", "webui")
-            return url
+    def clean_old_records(self, days_to_keep: int = 3) -> bool:
+        """Elimina lecturas telemétricas y eventos de Supabase con más de X días de antigüedad."""
+        if not self.is_enabled():
+            return False
+        try:
+            from datetime import timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
+
+            # Intentar RPC si la función almacenada existe
+            try:
+                self.client.rpc("clean_old_telemetry_readings", {"days_to_keep": days_to_keep}).execute()
+                log_supabase_activity("cleanup", "success", f"Ejecutada función de purga RPC ({days_to_keep} días)", "system")
+                return True
+            except Exception:
+                pass
+
+            # Fallback vía API REST directa
+            import urllib.request as _r, ssl as _s
+            headers = {
+                "Authorization": f"Bearer {self.service_key or self.key}",
+                "apikey": self.service_key or self.key,
+            }
+            ctx = _s._create_unverified_context()
+
+            # Purga en telemetry_readings
+            url_tel = f"{self.url.rstrip('/')}/rest/v1/telemetry_readings?inserted_at=lt.{cutoff}"
+            req_tel = _r.Request(url_tel, method="DELETE", headers=headers)
+            with _r.urlopen(req_tel, timeout=10, context=ctx) as resp:
+                resp.read()
+
+            # Purga en plant_events
+            url_ev = f"{self.url.rstrip('/')}/rest/v1/plant_events?inserted_at=lt.{cutoff}"
+            req_ev = _r.Request(url_ev, method="DELETE", headers=headers)
+            with _r.urlopen(req_ev, timeout=10, context=ctx) as resp:
+                resp.read()
+
+            log_supabase_activity("cleanup", "success", f"Purga de registros antiguos completada (anteriores a {cutoff})", "system")
+            return True
         except Exception as exc:
-            logger.error(f"[Supabase Storage] Error obteniendo URL para {filename}: {exc}")
-            log_supabase_activity("get_download_url", "error", f"Error obteniendo URL para {filename}: {exc}", "webui")
-            return None
+            logger.error(f"[Supabase Cleanup] Error ejecutando purga: {exc}")
+            log_supabase_activity("cleanup", "error", f"Error en purga: {exc}", "system")
+            return False
 
 
 # Singleton conveniente para usar en todo el proyecto

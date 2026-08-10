@@ -525,28 +525,41 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
         if not sb.is_enabled():
             return {}
         import ssl, urllib.request
-        url = f"{sb.url.rstrip('/')}/rest/v1/telemetry_readings?select=provider,device_key,update_time,status,metrics,inserted_at&provider=eq.{provider}&order=inserted_at.desc&limit=1000"
+        url = f"{sb.url.rstrip('/')}/rest/v1/telemetry_readings?select=provider,device_key,update_time,status,metrics,inserted_at&provider=eq.{provider}&order=inserted_at.desc&limit=2000"
         headers = {
             "apikey": sb.key,
             "Authorization": f"Bearer {sb.key}",
         }
         req = urllib.request.Request(url, headers=headers)
         ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+        with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
             rows = json.loads(resp.read().decode("utf-8"))
             for r in rows:
                 dev_k = str(r.get("device_key") or "").strip()
-                if dev_k and _norm_key(dev_k) not in out:
-                    m = dict(r.get("metrics") or {})
-                    ts = str(r.get("update_time") or r.get("inserted_at") or "").strip()
-                    st = str(r.get("status") or "").strip()
-                    m["Timestamp"] = ts
-                    m["update_time"] = ts
-                    m["timestamp"] = ts
-                    m["captured_at"] = ts
-                    m["status"] = st
-                    m["connection_status"] = st
-                    out[_norm_key(dev_k)] = m
+                m = dict(r.get("metrics") or {})
+                ts = str(r.get("update_time") or r.get("inserted_at") or "").strip()
+                st = str(r.get("status") or "").strip()
+                m["Timestamp"] = ts
+                m["update_time"] = ts
+                m["timestamp"] = ts
+                m["captured_at"] = ts
+                m["status"] = st
+                m["connection_status"] = st
+
+                # Registrar lectura bajo múltiples claves para búsqueda infalible en reportes
+                keys_to_index = [
+                    dev_k,
+                    m.get("plant_id"),
+                    m.get("plant_name"),
+                    m.get("device_name"),
+                    m.get("table_name"),
+                ]
+                for k in keys_to_index:
+                    if k:
+                        nk = _norm_key(str(k))
+                        if nk and nk not in out:
+                            out[nk] = m
+
             log_supabase_activity("fetch_telemetry", "success", f"Descargadas {len(rows)} lecturas de telemetría de {provider}", "webui")
     except Exception as exc:
         try:
@@ -4230,6 +4243,25 @@ class Handler(BaseHTTPRequestHandler):
                 _json_response(self, 400, {"error": f"{type(e).__name__}: {e}"})
             return
 
+        if path == "/api/supabase/clean":
+            try:
+                from providers.supabase_client import get_supabase
+                sb = get_supabase()
+                res = sb.clean_old_records(days_to_keep=3)
+                _json_response(self, 200, {"ok": res, "message": "Purga ejecutada exitosamente en Supabase"})
+            except Exception as e:
+                _json_response(self, 500, {"ok": False, "error": str(e)})
+            return
+
+        if path == "/api/system-logs":
+            try:
+                from providers.system_logger import get_recent_logs
+                logs = get_recent_logs(300)
+                _json_response(self, 200, {"ok": True, "logs": logs, "timestamp": time.time()})
+            except Exception as e:
+                _json_response(self, 500, {"ok": False, "error": str(e)})
+            return
+
         if path == "/api/supabase/status":
             try:
                 from providers.supabase_client import get_supabase, log_supabase_activity
@@ -4606,6 +4638,13 @@ def _get_local_ip() -> str:
 def main() -> None:
     host = os.environ.get("WEBUI_HOST", "0.0.0.0")
     port = int(os.environ.get("WEBUI_PORT", "8000"))
+
+    # Inicializar registro del sistema desde el inicio
+    try:
+        from providers.system_logger import SystemLogger
+        SystemLogger.get_instance().log_startup()
+    except Exception:
+        pass
 
     # Comprobar actualizaciones en segundo plano
     try:

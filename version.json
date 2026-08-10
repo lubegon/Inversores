@@ -1,5 +1,5 @@
 {
-  "version": "2.3.8",
-  "release_date": "2026-08-08",
-  "notes": "Soporte para SUPABASE_SERVICE_KEY en .env para subir reportes sin restricciones RLS. El bucket 'reports' se configura automáticamente como público al iniciar si el service key está disponible."
+  "version": "2.4.0",
+  "release_date": "2026-08-09",
+  "notes": "Corrección de reporte Excel ShineMonitor, incorporación de logger centralizado del sistema desde .bat, purga de 3 días en Supabase y sincronización con GitHub."
 }

@@ -762,6 +762,9 @@ def _insert_voltage_reading(
         "st_voltage": voltages.get("st_voltage"),
         "tr_voltage": voltages.get("tr_voltage"),
         "table_name": table_name,
+        "plant_id": plant_id,
+        "plant_name": plant_name or "",
+        "device_name": device_name or "",
     }
     parsed_cells = raw_data.get("parsed_cells")
     if isinstance(parsed_cells, dict):
