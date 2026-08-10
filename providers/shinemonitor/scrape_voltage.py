@@ -449,6 +449,12 @@ def _select_plant_and_load_tree(
     except Exception:
         pass
 
+    # Resetear el contenedor #plant_tree vaciando su HTML para no confundir nodos de la planta previa
+    try:
+        page.evaluate("() => { const t = document.getElementById('plant_tree'); if (t) t.innerHTML = '<div class=\"tree-loading\">Cargando...</div>'; }")
+    except Exception:
+        pass
+
     try:
         item.evaluate("el => { if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
     except Exception:
@@ -468,24 +474,17 @@ def _select_plant_and_load_tree(
     return plant_name, tree
 
 
-def _collect_inverters_and_device_anchors(tree: Locator, timeout_ms: int = 10_000) -> tuple[int, list[Locator]]:
+def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", timeout_ms: int = 15_000) -> tuple[int, list[Locator]]:
 
     page = tree.page
     start = time.time()
     while (time.time() - start) * 1000 < timeout_ms:
         nodes = tree.locator("li.jstree-node")
         c = nodes.count()
-        if c > 1:
-            break
-        if c == 1:
-            try:
-                txt = (nodes.first.locator("> a.jstree-anchor").first.inner_text() or "").strip().lower()
-                nid = (nodes.first.get_attribute("id") or "").strip().lower()
-                if "inverter" in txt or "inversor" in txt or nid.startswith("inv_") or nid.startswith("pn_"):
-                    break
-            except Exception:
-                pass
-        page.wait_for_timeout(300)
+        if c > 0:
+            if not plant_id or tree.locator(f"li[id*='{plant_id}']").count() > 0 or c > 1:
+                break
+        page.wait_for_timeout(200)
 
     try:
         tree.evaluate("""(el) => {
@@ -1013,7 +1012,7 @@ def main() -> None:
                         _dump_debug(page, run_dir, f"{plant.plant_id}-plant-error")
                         continue
 
-                    inverter_count, device_anchors = _collect_inverters_and_device_anchors(tree)
+                    inverter_count, device_anchors = _collect_inverters_and_device_anchors(tree, plant_id=plant.plant_id)
                     if inverter_count == 0:
                         print("  - NO_INVERTER", flush=True)
                         _insert_plant_event(
