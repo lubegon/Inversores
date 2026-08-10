@@ -1,5 +1,5 @@
 {
-  "version": "2.6.3",
+  "version": "2.6.4",
   "release_date": "2026-08-09",
-  "notes": "Despliegue automático de nodos jstree con open_all y coincidencia por ID (inv_/pn_) para capturar inyectores y monitores sin falsos positivos de NO_INVERTER."
+  "notes": "Fecha y hora completa en el panel Supabase Live Activity Feed y boton 'Limpiar Feed' para vaciar actividades registradas."
 }

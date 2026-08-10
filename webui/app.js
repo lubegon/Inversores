@@ -561,7 +561,8 @@ async function initDashboard(config) {
           
           let time = '';
           try {
-            time = new Date(act.timestamp).toLocaleTimeString();
+            const d = new Date(act.timestamp);
+            time = `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
           } catch(e) {
             time = act.timestamp || '';
           }
@@ -639,6 +640,19 @@ async function initDashboard(config) {
 
   pollSupabaseStatus().catch(() => { });
   setInterval(() => pollSupabaseStatus().catch(() => { }), 3000);
+
+  const clearSbFeedBtn = $('#btn-clear-sb-feed');
+  if (clearSbFeedBtn) {
+    clearSbFeedBtn.addEventListener('click', async () => {
+      const feedEl = $('#sb-activity-feed');
+      if (feedEl) {
+        feedEl.innerHTML = `<div style="color: #64748b; text-align: center; padding: 10px;">Visor de actividades de Supabase limpiado.</div>`;
+      }
+      try {
+        await apiGet('/api/supabase/clear-activity');
+      } catch (_) { }
+    });
+  }
 
   // Visor de Logs del Sistema (Consola en Vivo)
   const copySyslogBtn = $('#btn-copy-syslog');

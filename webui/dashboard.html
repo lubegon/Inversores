@@ -241,10 +241,13 @@
         </section>
 
         <section class="panel" id="supabase-live-feed">
-          <div class="panel-head">
+          <div class="panel-head" style="display: flex; align-items: center; justify-content: space-between;">
             <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
               <span>☁️ SUPABASE LIVE ACTIVITY FEED</span>
               <span class="pulse-ring" id="sb-pulse" style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-pro-act" id="btn-clear-sb-feed" style="font-size: 0.75rem; padding: 4px 10px;">🧹 Limpiar Feed</button>
             </div>
           </div>
           <div style="margin-top: 14px;">

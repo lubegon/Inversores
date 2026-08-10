@@ -85,3 +85,5 @@ Call log:
 Call log:
   - waiting for locator("#plant_tree") to be visible
  (shinemonitor)
+[2026-08-09 23:34:44] [INFO] [system_logger] [SUPABASE] [UPSERT_PLANT] Planta RBS Mecedores guardada (shinemonitor)
+[2026-08-09 23:35:09] [INFO] [system_logger] [SUPABASE] [INSERT_EVENT] Evento de planta 214436: RBS Mecedores: No hay Inverter en este Monitor (shinemonitor)

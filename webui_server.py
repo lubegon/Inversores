@@ -4304,6 +4304,16 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        if path in ("/api/supabase/clear-activity", "/api/supabase/clear-logs"):
+            try:
+                path_act = STORAGE_DIR / "supabase_activity.jsonl"
+                if path_act.exists():
+                    path_act.write_text("", encoding="utf-8")
+                _json_response(self, 200, {"ok": True})
+            except Exception as e:
+                _json_response(self, 500, {"ok": False, "error": str(e)})
+            return
+
         if path == "/api/status-grid":
             qs = parse_qs(parsed.query)
             provider = (qs.get("provider") or ["shinemonitor"])[0].strip() or "shinemonitor"
