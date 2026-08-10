@@ -731,10 +731,18 @@ def _ensure_grid_data(
 
     grid = _find_kendo_grid(page)
     if not grid:
-        page.wait_for_selector("div.k-grid, table.tableStyle, table#invDetailTable", timeout=timeout_ms)
+        try:
+            page.locator("div.k-grid:visible, table.tableStyle:visible, table#invDetailTable:visible, #invDetailCue:visible, div.faultInfo:visible").first.wait_for(timeout=timeout_ms)
+        except Exception:
+            pass
         grid = _find_kendo_grid(page)
 
     if not grid:
+        err_msg = page.locator("#invDetailCue, div.faultInfo").first
+        if err_msg.is_visible():
+            text = (err_msg.inner_text() or "").lower()
+            if "no detail data" in text or "no data" in text:
+                raise RuntimeError("NO_DATA_TODAY: " + text)
         raise RuntimeError("No se encontró ningún div.k-grid o table visible")
 
     rows_loc = grid.locator("tbody > tr")
