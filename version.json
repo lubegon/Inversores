@@ -1,5 +1,5 @@
 {
-  "version": "2.6.0",
+  "version": "2.6.1",
   "release_date": "2026-08-09",
-  "notes": "Rediseño completo de ShineMonitor con navegación index_en.html, toggle #headPlos e inyección Javascript directa en getPlantId para selección instantánea de plantas sin timeouts."
+  "notes": "Ajuste de estado 'attached' en _ensure_tree_loaded para evitar timeouts de visibilidad CSS en la recarga del árbol de plantas."
 }

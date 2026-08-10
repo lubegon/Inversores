@@ -366,7 +366,7 @@ def _ensure_tree_loaded(
 
         if attempt < retries:
             page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
-            page.wait_for_selector("#plant_tree", timeout=timeout_ms)
+            page.wait_for_selector("#plant_tree", state="attached", timeout=timeout_ms)
 
     if run_dir:
         _dump_debug(page, run_dir, debug_name)
