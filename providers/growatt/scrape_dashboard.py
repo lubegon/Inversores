@@ -271,22 +271,6 @@ def main() -> None:
             log.step(f"Lanzando browser (headless={headless})")
             browser = launch_browser(p, headless=headless)
             context = browser.new_context(storage_state=str(storage_state_path))
-            if headless:
-                def _block_unnecessary_resources(route):
-                    try:
-                        req = route.request
-                        res_type = (req.resource_type or "").lower()
-                        if res_type in ["image", "media", "font"]:
-                            return route.abort()
-                        url = (req.url or "").lower()
-                        if any(ext in url for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf"]):
-                            return route.abort()
-                    except Exception:
-                        pass
-                    return route.continue_()
-
-                context.route("**/*", _block_unnecessary_resources)
-
             page = context.new_page()
             page.set_default_timeout(30_000)
             page.set_default_navigation_timeout(60_000)
@@ -296,7 +280,16 @@ def main() -> None:
                 page.goto(home_url, wait_until="domcontentloaded", timeout=60_000)
 
                 log.step("Esperando selector superior de plantas")
-                page.locator(SEL_TOP_PLANT_SEARCH).wait_for(state="attached", timeout=60_000)
+                try:
+                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle").first.wait_for(state="attached", timeout=15_000)
+                except Exception:
+                    # Si la sesión expiró y redirigió a /login, re-ejecutar login automáticamente
+                    if "login" in (page.url or "").lower() or page.locator("#val_loginAccount").count() > 0:
+                        log.step("Sesión expirada en home; re-ejecutando login...")
+                        from .login import main as login_main
+                        login_main()
+                        page.goto(home_url, wait_until="domcontentloaded", timeout=60_000)
+                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle").first.wait_for(state="attached", timeout=30_000)
 
                 plant_names = _select_plants(page, log)
                 if limit_n is not None:

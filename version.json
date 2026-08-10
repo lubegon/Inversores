@@ -1,5 +1,5 @@
 {
-  "version": "2.10.14",
+  "version": "2.10.15",
   "release_date": "2026-08-10",
-  "notes": "Fix: Inspección directa del texto del cuerpo ('Total Generation', 'Welcome', 'All Plants') para confirmar login exitoso en Growatt sin falsos SystemExit."
+  "notes": "Fix: Eliminación de bloqueo agresivo de recursos y auto-recuperación de sesión expirada para Growatt."
 }
