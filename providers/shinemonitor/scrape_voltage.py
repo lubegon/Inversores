@@ -403,13 +403,30 @@ def _select_plant_and_load_tree(
             pass
 
     try:
+        dropdown.hover(timeout=2_000)
+    except Exception:
+        pass
+
+    try:
         dropdown.click(timeout=5_000)
     except Exception:
         try:
             dropdown.click(timeout=5_000, force=True)
         except Exception:
             pass
-    page.wait_for_timeout(300)
+
+    try:
+        page.wait_for_selector(
+            "#plantlist, #plant_select_listbox, .k-animation-container, ul.k-list",
+            state="visible",
+            timeout=5_000,
+        )
+    except Exception:
+        try:
+            dropdown.click(timeout=3_000, force=True)
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
 
     item_selectors = [
         f"#plant_select_listbox li[data-val='{plant.plant_id}']",

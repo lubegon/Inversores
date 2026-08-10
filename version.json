@@ -1,5 +1,5 @@
 {
-  "version": "2.4.7",
+  "version": "2.4.8",
   "release_date": "2026-08-09",
-  "notes": "Soporte dual de items y scroll para dropdown de plantas en ShineMonitor (#plantlist y #plant_select_listbox)."
+  "notes": "Añadir hover y espera explicita de visibilidad del contenedor de lista desplegable (#plantlist / #plant_select_listbox) antes de seleccionar planta."
 }
