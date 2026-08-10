@@ -1,5 +1,5 @@
 {
-  "version": "2.4.4",
+  "version": "2.4.5",
   "release_date": "2026-08-09",
-  "notes": "Recuperación automática de navegación en ShineMonitor (_select_plant_and_load_tree) para resolver el timeout de 20s en el selector de plantas."
+  "notes": "Manejo silencioso de desconexiones de socket cliente [WinError 10053] (ConnectionAbortedError) en el servidor HTTP WebUI."
 }

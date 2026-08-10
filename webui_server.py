@@ -129,12 +129,15 @@ def _other_running_providers(current: str | None = None) -> list[str]:
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: Any) -> None:
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(data)))
-    handler.end_headers()
-    handler.wfile.write(data)
+    try:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+    except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+        pass
 
 
 def _read_body_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
@@ -4635,6 +4638,15 @@ def _get_local_ip() -> str:
         return "127.0.0.1"
 
 
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        import sys
+        exc_type, exc_val, exc_tb = sys.exc_info()
+        if exc_type in (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            return
+        super().handle_error(request, client_address)
+
+
 def main() -> None:
     host = os.environ.get("WEBUI_HOST", "0.0.0.0")
     port = int(os.environ.get("WEBUI_PORT", "8000"))
@@ -4660,7 +4672,7 @@ def main() -> None:
     if not WEB_DIR.exists():
         raise SystemExit("No existe carpeta webui/")
 
-    server = ThreadingHTTPServer((host, port), Handler)
+    server = QuietThreadingHTTPServer((host, port), Handler)
     local_ip = _get_local_ip()
     print(f"Web UI (Local): http://localhost:{port}/")
     if local_ip != "127.0.0.1":
