@@ -164,6 +164,12 @@ rem 6. Verificar si existe una nueva version en GitHub
 .venv\Scripts\python.exe -m providers.version_checker >nul 2>&1
 
 rem 7. Iniciar Servidor
+if exist version.json (
+    for /f "tokens=2 delims=:," %%A in ('findstr "version" version.json') do set "SYS_VER=%%~A"
+)
+set "SYS_VER=%SYS_VER: =%"
+set "SYS_VER=%SYS_VER:"=%"
+
 cls
 echo ======================================================================
 echo       SISTEMA DE CAPTURA DE INVERSORES (v%SYS_VER%)
