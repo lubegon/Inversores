@@ -281,15 +281,9 @@ def main() -> None:
 
                 log.step("Esperando selector superior de plantas")
                 try:
-                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle").first.wait_for(state="attached", timeout=15_000)
+                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle, #index").first.wait_for(state="attached", timeout=60_000)
                 except Exception:
-                    # Si la sesión expiró y redirigió a /login, re-ejecutar login automáticamente
-                    if "login" in (page.url or "").lower() or page.locator("#val_loginAccount").count() > 0:
-                        log.step("Sesión expirada en home; re-ejecutando login...")
-                        from .login import main as login_main
-                        login_main()
-                        page.goto(home_url, wait_until="domcontentloaded", timeout=60_000)
-                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle").first.wait_for(state="attached", timeout=30_000)
+                    page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle, #index").first.wait_for(state="attached", timeout=30_000)
 
                 plant_names = _select_plants(page, log)
                 if limit_n is not None:
