@@ -441,17 +441,42 @@ def _select_plant_and_load_tree(
     if not item.is_visible():
 
         def search_scroll() -> bool:
+            try:
+                if item.count() > 0:
+                    item.scroll_into_view_if_needed(timeout=2_000)
+                    if item.is_visible():
+                        return True
+            except Exception:
+                pass
+
             for container_sel in ("#plant_select_listbox .k-list-scroller", "#plantlist", "#plantlist > ul", ".k-list-scroller"):
                 container = page.locator(container_sel).first
                 if container.is_visible():
-                    for delta in (300, 600, 1000, 1500, 2000, 3000, 5000):
+                    for step in range(35):
                         try:
-                            container.evaluate("(el, d) => el.scrollTop = d", delta)
+                            container.evaluate("(el) => el.scrollTop = el.scrollTop + (el.clientHeight || 300)")
+                        except Exception:
+                            break
+                        page.wait_for_timeout(100)
+                        try:
+                            if item.count() > 0 and item.is_visible():
+                                return True
+                        except Exception:
+                            pass
+
+                    for ratio in (0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1.0):
+                        try:
+                            container.evaluate("(el, r) => el.scrollTop = el.scrollHeight * r", ratio)
                         except Exception:
                             pass
                         page.wait_for_timeout(150)
-                        if item.is_visible():
-                            return True
+                        try:
+                            if item.count() > 0:
+                                item.scroll_into_view_if_needed(timeout=1_000)
+                                if item.is_visible():
+                                    return True
+                        except Exception:
+                            pass
             return False
 
         found = search_scroll()
