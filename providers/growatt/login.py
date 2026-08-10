@@ -102,9 +102,19 @@ def main() -> None:
             page.locator(sel_pass).fill(password)
 
             log.step("Enviando login")
-            page.locator(sel_submit).click()
             try:
-                page.wait_for_load_state("networkidle", timeout=60_000)
+                # Intentar selector principal o fallbacks comunes de Growatt
+                submit_btn = page.locator(sel_submit).first
+                if submit_btn.is_visible():
+                    submit_btn.click()
+                else:
+                    page.locator("button.login-btn, button:has-text('Login'), button:has-text('Sign In'), input[type='submit']").first.click()
+            except Exception:
+                page.locator(sel_pass).press("Enter")
+
+            try:
+                page.wait_for_timeout(3000)
+                page.wait_for_load_state("networkidle", timeout=15_000)
             except Exception:
                 pass
 
@@ -123,9 +133,20 @@ def main() -> None:
                     # Último recurso: pequeño delay para que el frontend navegue.
                     page.wait_for_timeout(3000)
 
+            # Si hay popups/modales de notificación tras login, intentar cerrar
+            try:
+                page.locator("div.layui-layer-close, .pop-close, .notice-close").click(timeout=3000)
+            except Exception:
+                pass
+
             login_still_visible = False
             try:
-                login_still_visible = page.locator(sel_user).is_visible()
+                # Si la URL cambió o ya hay elementos de dashboard visible, consideramos login exitoso
+                current_url = (page.url or "").lower()
+                if "login" not in current_url or page.locator("#index, .layui-layout-admin, #plantList").count() > 0:
+                    login_still_visible = False
+                else:
+                    login_still_visible = page.locator(sel_user).is_visible()
             except Exception:
                 login_still_visible = False
 
