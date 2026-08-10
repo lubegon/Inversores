@@ -449,17 +449,11 @@ def _select_plant_and_load_tree(
     except Exception:
         pass
 
-    # Resetear el contenedor #plant_tree vaciando su HTML para no confundir nodos de la planta previa
     try:
-        page.evaluate("() => { const t = document.getElementById('plant_tree'); if (t) t.innerHTML = '<div class=\"tree-loading\">Cargando...</div>'; }")
-    except Exception:
-        pass
-
-    try:
-        item.evaluate("el => { if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
+        page.evaluate(f"getPlantId('plant_{plant.plant_id}')")
     except Exception:
         try:
-            page.evaluate(f"getPlantId('plant_{plant.plant_id}')")
+            item.evaluate("el => { if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
         except Exception:
             item.click(force=True)
 
