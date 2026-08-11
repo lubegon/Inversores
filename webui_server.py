@@ -1861,31 +1861,48 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
     except Exception:
         name_by_table = {}
 
-    def _derive_plant_name(table_name: str) -> str:
-        # g_Nodo_Algo_SERIAL_hash -> "Nodo Algo SERIAL"
-        s = str(table_name or "").strip()
+    def _derive_plant_name(t: str) -> str:
+        s = str(t or "").strip()
         if s.startswith("g_"):
             s = s[2:]
-        parts = [p for p in s.split("_") if p]
+        parts = s.split("_")
         if parts and re.fullmatch(r"[0-9a-fA-F]{8}", parts[-1] or ""):
             parts = parts[:-1]
         s = " ".join(parts)
         s = re.sub(r"\s+", " ", s).strip()
         return s
-
     plants: list[tuple[str, str]] = []
     for t in tables:
-        pname = (name_by_table.get(t) or _derive_plant_name(t)).strip()
+        pname = (name_by_table.get(t) or _derive_plant_name(t) or "").strip()
         if not pname:
             pname = t
         plants.append((pname, t))
+
     growatt_telemetry = _fetch_supabase_telemetry_map("growatt")
     if not plants:
+        seen_p = set()
         for dev_k, m in growatt_telemetry.items():
             if dev_k in ("test_rest_fallback", "test_key_225"):
                 continue
-            pname = str(m.get("plant_name") or m.get("plant") or dev_k)
-            plants.append((pname, dev_k))
+            tbl = str(m.get("table_name") or "").strip()
+            pname = str(m.get("plant_name") or "").strip()
+            dser = str(m.get("device_serial") or "").strip()
+            if not dser and "_" in tbl and len(tbl.split("_")[-1]) == 8:
+                continue
+            clean_tbl_name = _derive_plant_name(tbl) if tbl else ""
+            if clean_tbl_name:
+                disp_name = clean_tbl_name
+            elif dser:
+                disp_name = f"{pname} {dser}".strip() if pname else dser
+            elif pname:
+                disp_name = pname
+            else:
+                disp_name = dev_k
+
+            key_id = tbl or disp_name
+            if key_id and key_id not in seen_p:
+                seen_p.add(key_id)
+                plants.append((disp_name, key_id))
 
     plants.sort(key=lambda x: (_norm_key(x[0]), _norm_key(x[1])))
 

@@ -1,5 +1,5 @@
 {
-  "version": "2.14.8",
+  "version": "2.14.9",
   "release_date": "2026-08-11",
-  "notes": "Fix: Alineación estricta de límites de franjas horarias con la interfaz gráfica (Mañana: 06:00-11:59, Medio Día: 12:00-14:59, Tarde: 15:00-18:59, Medianoche: 19:00-05:59)."
+  "notes": "Fix: Eliminación de filas duplicadas sin serial en la hoja Growhatt y formateo de nombres limpios por inversor real (ej: Nodo Ultimas Noticias HUEFBJV03H)."
 }
