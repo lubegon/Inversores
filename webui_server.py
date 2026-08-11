@@ -685,12 +685,12 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
                 m["status"] = st
                 m["connection_status"] = st
 
-                clean_name = ""
-                if "__" in dev_k:
-                    clean_name = dev_k.split("__")[-1].strip()
+                raw_key = dev_k.split("__")[0].strip() if "__" in dev_k else dev_k
+                clean_name = dev_k.split("__")[-1].strip() if "__" in dev_k else ""
 
                 keys_to_index = [
                     dev_k,
+                    raw_key,
                     clean_name,
                     m.get("plant_id"),
                     m.get("plant_name"),
@@ -935,6 +935,51 @@ def _clean_metric_val(val: Any) -> Any:
         if "-" in s_lower or "/" in s_lower:
             return None
     return s
+
+
+def _has_numeric_metrics(d: dict[str, Any]) -> bool:
+    if not d:
+        return False
+    metric_patterns = ("voltage", "current", "power", "pv", "v_num", "a_num", "w_num", "battery", "batt", "pload", "pgrid", "pinverter")
+    for k, v in d.items():
+        if v in (None, "", " "):
+            continue
+        nk = _norm_key(str(k))
+        if any(p in nk for p in metric_patterns):
+            return True
+    return False
+
+
+def _get_val_from_dict(rowd: dict[str, Any], h: str, excel_to_db: dict[str, str] | None = None) -> Any:
+    if not rowd or not h:
+        return None
+    hn = _norm_key(h)
+    db_col = excel_to_db.get(hn) if excel_to_db else None
+
+    # 1. Coincidencia directa con db_col
+    if db_col and db_col in rowd and rowd.get(db_col) not in (None, "", " "):
+        return rowd.get(db_col)
+
+    # 2. Coincidencia directa con h o hn
+    if h in rowd and rowd.get(h) not in (None, "", " "):
+        return rowd.get(h)
+    if hn in rowd and rowd.get(hn) not in (None, "", " "):
+        return rowd.get(hn)
+
+    # 3. Búsqueda difusa por norm_key y remoción de unidades (v, a, w, kwh, kw, hz)
+    clean_unit = lambda s: re.sub(r"\b(v|a|w|kwh|kw|hz|num)\b", "", s).strip()
+    hn_clean = clean_unit(hn)
+
+    for k, v in rowd.items():
+        if v in (None, "", " "):
+            continue
+        nk = _norm_key(str(k))
+        if nk == hn or (db_col and nk == _norm_key(db_col)):
+            return v
+        nk_clean = clean_unit(nk)
+        if hn_clean and nk_clean == hn_clean:
+            return v
+    return None
 
 
 def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None, slot: str) -> None:
@@ -1351,11 +1396,8 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                     if kc[0] and kc in existing:
                         prev = existing[kc]
                         break
-            if prev and not _is_today(prev.get("timestamp")):
-                prev = {}
-
-            # Fallback a Supabase por slot si el Excel no tenía la data previa
-            if not prev and not is_after:
+            # Fallback a Supabase por slot si el Excel no tenía la data previa o métricas numéricas completas
+            if (not prev or not _has_numeric_metrics(prev)) and not is_after:
                 for ck in (d.get("device_key"), plant, d.get("device"), d.get("plant_id")):
                     if ck:
                         supa_m = sm_slot_telemetry.get((_norm_key(ck), slot_i))
@@ -1367,15 +1409,17 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                 hn = _norm_key(h)
                 if hn in (_norm_key("plant_name"), _norm_key("hora")):
                     continue
-                if prev and hn in prev and prev.get(hn) not in (None, "", " "):
-                    ws.cell(r, c).value = prev.get(hn)
-                elif not is_after and not has_prev_val:
-                    if hn == _norm_key("timestamp"):
-                        ws.cell(r, c).value = "SIN DATOS"
+                p_val = _get_val_from_dict(prev, h, excel_to_db) if prev else None
+                if hn == _norm_key("timestamp"):
+                    if p_val in (None, "", " "):
+                        p_val = "SIN DATOS" if (not is_after and not has_prev_val) else None
                     else:
-                        ws.cell(r, c).value = None
+                        p_val = _format_short_timestamp(p_val)
+                elif p_val in (None, "", " "):
+                    p_val = None
                 else:
-                    ws.cell(r, c).value = None
+                    p_val = _clean_metric_val(p_val)
+                ws.cell(r, c).value = p_val
 
             if prev:
                 _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
@@ -1645,23 +1689,36 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                     is_after = True
             except ValueError:
                 pass
-            prev = {} if is_after else (existing.get((_norm_key(mon_name), slot_i)) or {})
-            if prev and not _is_today(prev.get("timestamp")):
-                prev = {}
+            k_cands = [(_norm_key(mon_name), slot_i), (_norm_key(t), slot_i)]
+            prev = {}
+            if not is_after:
+                for kc in k_cands:
+                    if kc[0] and kc in existing:
+                        prev = existing[kc]
+                        break
+            if (not prev or not _has_numeric_metrics(prev)) and not is_after:
+                for ck in (t, mon_name):
+                    if ck:
+                        supa_m = values_slot_telemetry.get((_norm_key(ck), slot_i))
+                        if supa_m:
+                            prev = supa_m
+                            break
             has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("monitor_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
                 if hn in (_norm_key("monitor_name"), _norm_key("hora")):
                     continue
-                if prev and hn in prev and prev.get(hn) not in (None, "", " "):
-                    ws.cell(r, c).value = prev.get(hn)
-                elif not is_after and not has_prev_val:
-                    if hn == _norm_key("timestamp"):
-                        ws.cell(r, c).value = "SIN DATOS"
+                p_val = _get_val_from_dict(prev, h) if prev else None
+                if hn == _norm_key("timestamp"):
+                    if p_val in (None, "", " "):
+                        p_val = "SIN DATOS" if (not is_after and not has_prev_val) else None
                     else:
-                        ws.cell(r, c).value = None
+                        p_val = _format_short_timestamp(p_val)
+                elif p_val in (None, "", " "):
+                    p_val = None
                 else:
-                    ws.cell(r, c).value = None
+                    p_val = _clean_metric_val(p_val)
+                ws.cell(r, c).value = p_val
 
             if prev:
                 _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
@@ -1926,6 +1983,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
     for plant_name, t in plants:
         if not plant_name or not t:
             continue
+        colmap = table_map.get(t) or {}
 
         # Bloque 4 filas
         for i, hl in enumerate(hour_labels):
@@ -1949,9 +2007,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                     if kc[0] and kc in existing:
                         prev = existing[kc]
                         break
-            if prev and not _is_today(prev.get("timestamp")):
-                prev = {}
-            if not prev and not is_after:
+            if (not prev or not _has_numeric_metrics(prev)) and not is_after:
                 for ck in (t, plant_name):
                     if ck:
                         supa_m = growatt_slot_telemetry.get((_norm_key(ck), slot_i))
@@ -1963,15 +2019,17 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 hn = _norm_key(h)
                 if hn in (_norm_key("plant_name"), _norm_key("hora")):
                     continue
-                if prev and hn in prev and prev.get(hn) not in (None, "", " "):
-                    ws.cell(r, c).value = prev.get(hn)
-                elif not is_after and not has_prev_val:
-                    if hn == _norm_key("timestamp"):
-                        ws.cell(r, c).value = "SIN DATOS"
+                p_val = _get_val_from_dict(prev, h, colmap) if prev else None
+                if hn == _norm_key("timestamp"):
+                    if p_val in (None, "", " "):
+                        p_val = "SIN DATOS" if (not is_after and not has_prev_val) else None
                     else:
-                        ws.cell(r, c).value = None
+                        p_val = _format_short_timestamp(p_val)
+                elif p_val in (None, "", " "):
+                    p_val = None
                 else:
-                    ws.cell(r, c).value = None
+                    p_val = _clean_metric_val(p_val)
+                ws.cell(r, c).value = p_val
 
             if prev:
                 _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
