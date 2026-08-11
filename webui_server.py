@@ -905,7 +905,10 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
     # DB: meta_devices (principal)
     devices: dict[tuple[str, str], dict[str, Any]] = {}
     try:
-        rows = conn_sm.execute("SELECT plant_id, device_name, table_name FROM meta_devices").fetchall()
+        try:
+            rows = conn_sm.execute("SELECT plant_id, device_name, table_name, device_key FROM meta_devices").fetchall()
+        except Exception:
+            rows = conn_sm.execute("SELECT plant_id, device_name, table_name FROM meta_devices").fetchall()
         for r in rows:
             if not r or r[1] is None or r[2] is None:
                 continue
@@ -913,10 +916,13 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             plant = pid_to_plant.get(pid, "")
             device = str(r[1]).strip()
             table = str(r[2]).strip()
+            dev_k = str(r[3]).strip() if len(r) > 3 and r[3] else ""
             if not device or not table:
                 continue
             k = (_norm_key(plant), _norm_key(device))
-            d = devices.setdefault(k, {"plant": plant, "device": device, "tables": []})
+            d = devices.setdefault(k, {"plant": plant, "device": device, "device_key": dev_k, "tables": []})
+            if dev_k and not d.get("device_key"):
+                d["device_key"] = dev_k
             if table not in d["tables"]:
                 d["tables"].append(table)
     except Exception:
@@ -962,21 +968,27 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
     device_list = list(devices.values())
     device_list.sort(key=lambda x: (_norm_key(x.get("plant") or ""), _norm_key(x.get("device") or "")))
 
-    # Fallback desde Supabase cuando no hay BD local o está vacía
-    if not device_list:
-        sm_tel_preview = _fetch_supabase_telemetry_map("shinemonitor")
-        for dev_k, m in sm_tel_preview.items():
-            if "test" in dev_k:
-                continue
-            pname = str(m.get("plant_name") or m.get("plant") or "").strip()
-            dname = str(m.get("device_name") or m.get("device") or dev_k).strip()
+    # Combinar o complementar desde Supabase para asegurar que todos los monitores remotos aparezcan
+    existing_keys = {
+        (_norm_key(d.get("plant") or ""), _norm_key(d.get("device") or ""))
+        for d in device_list
+    }
+    sm_tel_preview = _fetch_supabase_telemetry_map("shinemonitor")
+    for dev_k, m in sm_tel_preview.items():
+        if "test" in dev_k:
+            continue
+        pname = str(m.get("plant_name") or m.get("plant") or "").strip()
+        dname = str(m.get("device_name") or m.get("device") or dev_k).strip()
+        k = (_norm_key(pname), _norm_key(dname))
+        if k not in existing_keys:
+            existing_keys.add(k)
             device_list.append({
                 "plant": pname,
                 "device": dname,
                 "device_key": dev_k,
                 "tables": [],
             })
-        device_list.sort(key=lambda x: (_norm_key(x.get("plant") or ""), _norm_key(x.get("device") or "")))
+    device_list.sort(key=lambda x: (_norm_key(x.get("plant") or ""), _norm_key(x.get("device") or "")))
 
     # Limpiar hoja (valores + merges) para reconstruir la grilla ordenada
     try:
@@ -1009,7 +1021,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             pass
     ws.freeze_panes = "A2"
 
-    sm_telemetry = _fetch_supabase_telemetry_map("shinemonitor")
+    sm_telemetry = sm_tel_preview
 
     # Helper: fila más reciente (por id o Supabase) entre varias tablas
     def _latest_any_row(tables: list[str], dev_key: str = "", dev_name: str = "") -> dict[str, Any] | None:
@@ -1041,7 +1053,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         plant = str(d.get("plant") or "").strip()
         device = str(d.get("device") or "").strip()
         tables = list(d.get("tables") or [])
-        if not device or not tables:
+        if not device:
             continue
 
         # Preservar datos existentes para los 4 slots

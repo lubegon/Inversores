@@ -1,5 +1,5 @@
 {
-  "version": "2.11.3",
-  "release_date": "2026-08-10",
-  "notes": "Fix: Optimización ultrarrápida de tiempos de inspección de plantas en Growatt (reducción de esperas estáticas de 60s a 3s)."
+  "version": "2.11.4",
+  "release_date": "2026-08-11",
+  "notes": "Fix: Corregir generación y descarga de datos de ShineMonitor en reporte Excel combinando Supabase y BD local sin descartar monitores sin tablas físicas."
 }
