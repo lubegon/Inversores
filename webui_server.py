@@ -843,10 +843,9 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
     if not slot or not slot_label:
         return
 
-    # Columnas requeridas (en el orden pedido)
+    # Columnas requeridas (en el orden pedido - device_name eliminado por redundancia)
     headers = [
         "plant_name",
-        "device_name",
         "Hora",
         "Timestamp",
         "Battery Voltage",
@@ -892,9 +891,9 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
 
     hour_labels = ["Media Noche", "Mañana", "Medio Dia", "Tarde"]
 
-    def _iter_existing_rows() -> dict[tuple[str, str, str], dict[str, Any]]:
-        """Lee datos existentes para preservarlos: (plant, device, slot) -> {header_norm: value}."""
-        out: dict[tuple[str, str, str], dict[str, Any]] = {}
+    def _iter_existing_rows() -> dict[tuple[str, str], dict[str, Any]]:
+        """Lee datos existentes para preservarlos: (plant, slot) -> {header_norm: value}."""
+        out: dict[tuple[str, str], dict[str, Any]] = {}
         try:
             # validar header actual
             current = []
@@ -905,21 +904,17 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                 return {}
 
             last_plant = ""
-            last_device = ""
             for r in range(2, ws.max_row + 1):
                 pv = ws.cell(r, 1).value
-                dv = ws.cell(r, 2).value
-                hv = ws.cell(r, 3).value
+                hv = ws.cell(r, 2).value
                 if isinstance(pv, str) and pv.strip():
                     last_plant = pv.strip()
-                if isinstance(dv, str) and dv.strip():
-                    last_device = dv.strip()
                 if not isinstance(hv, str) or not hv.strip():
                     continue
                 s = _canonical_slot(hv)
                 if not s:
                     continue
-                key = (_norm_key(last_plant), _norm_key(last_device), s)
+                key = (_norm_key(last_plant), s)
                 rowd: dict[str, Any] = {}
                 for c in range(1, len(headers) + 1):
                     hn = _norm_key(headers[c - 1])
@@ -955,7 +950,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         pass
 
     # DB: meta_devices (principal)
-    devices: dict[tuple[str, str], dict[str, Any]] = {}
+    devices: dict[str, dict[str, Any]] = {}
     try:
         try:
             rows = conn_sm.execute("SELECT plant_id, device_name, table_name, device_key FROM meta_devices").fetchall()
@@ -971,8 +966,8 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             dev_k = str(r[3]).strip() if len(r) > 3 and r[3] else ""
             if not device or not table:
                 continue
-            k = (_norm_key(plant), _norm_key(device))
-            d = devices.setdefault(k, {"plant": plant, "plant_id": pid, "device": device, "device_key": dev_k, "tables": []})
+            k = _norm_key(plant or device)
+            d = devices.setdefault(k, {"plant": plant or device, "plant_id": pid, "device": device, "device_key": dev_k, "tables": []})
             if dev_k and not d.get("device_key"):
                 d["device_key"] = dev_k
             if table not in d["tables"]:
@@ -981,7 +976,6 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         devices = {}
 
     # Fallback: tablas reales en sqlite_master que no estén en meta_devices.
-    # Filtramos solo tablas de medición (deben tener columna 'Timestamp').
     def _table_has_timestamp(table: str) -> bool:
         try:
             cols = [r[1] for r in conn_sm.execute(f"PRAGMA table_info('{table}')").fetchall()]
@@ -1003,7 +997,6 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             known_tables.add(str(t))
 
     def _derive_device_name(table_name: str) -> str:
-        # Nodo_El_Socorro -> Nodo El Socorro
         s = str(table_name or "").strip().replace("_", " ")
         s = re.sub(r"\s+", " ", s).strip()
         return s
@@ -1012,19 +1005,16 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         if t in known_tables:
             continue
         dev = _derive_device_name(t)
-        k = ("", _norm_key(dev))
+        k = _norm_key(dev)
         d = devices.setdefault(k, {"plant": dev, "device": dev, "tables": []})
         if t not in d["tables"]:
             d["tables"].append(t)
 
     device_list = list(devices.values())
-    device_list.sort(key=lambda x: (_norm_key(x.get("plant") or ""), _norm_key(x.get("device") or "")))
+    device_list.sort(key=lambda x: _norm_key(x.get("plant") or ""))
 
     # Combinar o complementar desde Supabase para asegurar que todos los monitores remotos aparezcan
-    existing_keys = {
-        (_norm_key(d.get("plant") or ""), _norm_key(d.get("device") or ""))
-        for d in device_list
-    }
+    existing_keys = {_norm_key(d.get("plant") or "") for d in device_list}
     sm_tel_preview = _fetch_supabase_telemetry_map("shinemonitor")
     for dev_k, m in sm_tel_preview.items():
         if "test" in dev_k:
@@ -1034,17 +1024,18 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         pid = str(m.get("plant_id") or "").strip()
         if not pname and pid:
             pname = pid_to_plant.get(pid, "")
-        k = (_norm_key(pname), _norm_key(dname))
+        target_name = pname or dname
+        k = _norm_key(target_name)
         if k not in existing_keys:
             existing_keys.add(k)
             device_list.append({
-                "plant": pname,
+                "plant": target_name,
                 "plant_id": pid,
                 "device": dname,
                 "device_key": dev_k,
                 "tables": [],
             })
-    device_list.sort(key=lambda x: (_norm_key(x.get("plant") or ""), _norm_key(x.get("device") or "")))
+    device_list.sort(key=lambda x: _norm_key(x.get("plant") or ""))
 
     # Limpiar hoja (valores + merges) para reconstruir la grilla ordenada
     try:
@@ -1059,7 +1050,6 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         if ws.max_row:
             ws.delete_rows(1, ws.max_row)
     except Exception:
-        # fallback: si delete_rows falla, intentamos borrar valores
         for r in range(1, ws.max_row + 1):
             for c in range(1, ws.max_column + 1):
                 try:
@@ -1079,7 +1069,6 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
 
     sm_telemetry = sm_tel_preview
 
-    # Helper: fila más reciente (por id o Supabase) entre varias tablas
     def _latest_any_row(tables: list[str], dev_key: str = "", dev_name: str = "") -> dict[str, Any] | None:
         cands = [dev_key, dev_name] + tables
         for c in cands:
@@ -1148,18 +1137,12 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         if not plant:
             plant = "Shine Monitor"
 
-        device = _clean_display_name(device)
-        if not device:
-            continue
-
         # Preservar datos existentes para los 4 slots
         for i, hl in enumerate(hour_labels):
             r = row + i
-            # plant/device solo en la primera fila del bloque; se fusionan verticalmente
             if i == 0:
                 ws.cell(r, 1).value = plant
-                ws.cell(r, 2).value = device
-            ws.cell(r, 3).value = hl
+            ws.cell(r, 2).value = hl
 
             slot_i = _canonical_slot(hl)
             is_after = False
@@ -1169,32 +1152,31 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                     is_after = True
             except ValueError:
                 pass
-            k = (_norm_key(plant), _norm_key(device), slot_i)
+            k = (_norm_key(plant), slot_i)
             prev = {} if is_after else (existing.get(k) or {})
             if prev and not _is_today(prev.get("timestamp")):
                 prev = {}
-            has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora"))) if prev else False
+            has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
-                if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
+                if hn in (_norm_key("plant_name"), _norm_key("hora")):
                     continue
                 if prev and hn in prev and prev.get(hn) not in (None, "", " "):
                     ws.cell(r, c).value = prev.get(hn)
                 elif not is_after and not has_prev_val:
-                    ws.cell(r, c).value = "SIN DATOS"
+                    if hn == _norm_key("timestamp"):
+                        ws.cell(r, c).value = "SIN DATOS"
+                    else:
+                        ws.cell(r, c).value = None
                 else:
                     ws.cell(r, c).value = None
 
             if prev:
                 _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
 
-        # Merge plant/device over 4 rows
+        # Merge plant over 4 rows
         try:
             ws.merge_cells(start_row=row, start_column=1, end_row=row + 3, end_column=1)
-        except Exception:
-            pass
-        try:
-            ws.merge_cells(start_row=row, start_column=2, end_row=row + 3, end_column=2)
         except Exception:
             pass
 
@@ -1209,14 +1191,17 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             if best is None:
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
-                    if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
+                    if hn in (_norm_key("plant_name"), _norm_key("hora")):
                         continue
-                    ws.cell(r, c).value = "SIN DATOS"
+                    if hn == _norm_key("timestamp"):
+                        ws.cell(r, c).value = "SIN DATOS"
+                    else:
+                        ws.cell(r, c).value = None
             else:
                 status = str(best.get("status") or "").strip()
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
-                    if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
+                    if hn in (_norm_key("plant_name"), _norm_key("hora")):
                         continue
                     db_col = excel_to_db.get(hn)
                     val = None
@@ -1238,7 +1223,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                         else:
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
-                        val = "SIN DATOS"
+                        val = None
                     ws.cell(r, c).value = val
                 _apply_row_fill_if_offgrid(ws, r, len(headers), status)
             break
@@ -1463,7 +1448,10 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                 if prev and hn in prev and prev.get(hn) not in (None, "", " "):
                     ws.cell(r, c).value = prev.get(hn)
                 elif not is_after and not has_prev_val:
-                    ws.cell(r, c).value = "SIN DATOS"
+                    if hn == _norm_key("timestamp"):
+                        ws.cell(r, c).value = "SIN DATOS"
+                    else:
+                        ws.cell(r, c).value = None
                 else:
                     ws.cell(r, c).value = None
 
@@ -1495,7 +1483,10 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                     hn = _norm_key(h)
                     if hn in (_norm_key("monitor_name"), _norm_key("nodo"), _norm_key("hora")):
                         continue
-                    ws.cell(target_r, c).value = "SIN DATOS"
+                    if hn == _norm_key("timestamp"):
+                        ws.cell(target_r, c).value = "SIN DATOS"
+                    else:
+                        ws.cell(target_r, c).value = None
             else:
                 status = str(best.get("status") or "").strip()
                 for c, h in enumerate(headers, start=1):
@@ -1521,7 +1512,7 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                         else:
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
-                        val = "SIN DATOS"
+                        val = None
                     ws.cell(target_r, c).value = val
                 _apply_row_fill_if_offgrid(ws, target_r, len(headers), status)
 
@@ -1750,7 +1741,10 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 if prev and hn in prev and prev.get(hn) not in (None, "", " "):
                     ws.cell(r, c).value = prev.get(hn)
                 elif not is_after and not has_prev_val:
-                    ws.cell(r, c).value = "SIN DATOS"
+                    if hn == _norm_key("timestamp"):
+                        ws.cell(r, c).value = "SIN DATOS"
+                    else:
+                        ws.cell(r, c).value = None
                 else:
                     ws.cell(r, c).value = None
 
@@ -1783,7 +1777,10 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                     hn = _norm_key(h)
                     if hn in (_norm_key("plant_name"), _norm_key("hora")):
                         continue
-                    ws.cell(target_r, c).value = "SIN DATOS"
+                    if hn == _norm_key("timestamp"):
+                        ws.cell(target_r, c).value = "SIN DATOS"
+                    else:
+                        ws.cell(target_r, c).value = None
             else:
                 status = str(best.get("status") or "").strip()
                 colmap = table_map.get(t) or {}
@@ -1810,7 +1807,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                         else:
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
-                        val = "SIN DATOS"
+                        val = None
                     ws.cell(target_r, c).value = val
                 _apply_row_fill_if_offgrid(ws, target_r, len(headers), status)
 

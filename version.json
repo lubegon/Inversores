@@ -1,5 +1,5 @@
 {
-  "version": "2.13.1",
+  "version": "2.14.0",
   "release_date": "2026-08-11",
-  "notes": "Fix: Manejo infalible de subidas a Supabase Storage (SDK upload/update + REST fallback) para evitar errores HTTP 400 al sobrescribir reportes existentes."
+  "notes": "Feature: Regla de 4 descargas diarias acumulativas, 'SIN DATOS' únicamente en columna timestamp (métricas vacías en blanco) y eliminación de columna device_name redundante en reportes."
 }
