@@ -605,13 +605,25 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
                 m["status"] = st
                 m["connection_status"] = st
 
-                # Registrar lectura bajo múltiples claves para búsqueda infalible en reportes
+                raw_key = dev_k.split("__")[0].strip() if "__" in dev_k else dev_k
+                clean_name = dev_k.split("__")[-1].strip() if "__" in dev_k else ""
+                p_name = str(m.get("plant_name") or "").strip()
+                d_serial = str(m.get("device_serial") or "").strip()
+                tbl_name = str(r.get("table_name") or m.get("table_name") or "").strip()
+                combo1 = f"{p_name} {d_serial}".strip() if (p_name and d_serial) else ""
+                combo2 = f"{clean_name} {d_serial}".strip() if (clean_name and d_serial) else ""
+
                 keys_to_index = [
                     dev_k,
+                    raw_key,
+                    clean_name,
+                    combo1,
+                    combo2,
+                    p_name,
+                    d_serial,
+                    tbl_name,
                     m.get("plant_id"),
-                    m.get("plant_name"),
                     m.get("device_name"),
-                    m.get("table_name"),
                 ]
                 for k in keys_to_index:
                     if k:
@@ -1244,12 +1256,15 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
 
     sm_telemetry = sm_tel_preview
 
-    def _latest_any_row(tables: list[str], dev_key: str = "", dev_name: str = "") -> dict[str, Any] | None:
-        cands = [dev_key, dev_name] + tables
+    def _latest_any_row(tables: list[str], dev_key: str = "", dev_name: str = "", plant_name: str = "", plant_id: str = "") -> dict[str, Any] | None:
+        raw_key = dev_key.split("__")[0].strip() if "__" in dev_key else dev_key
+        clean_name = _extract_name_from_key(dev_key)
+        cands = [plant_name, clean_name, dev_key, raw_key, dev_name, plant_id] + tables
         for c in cands:
-            nk = _norm_key(c)
-            if nk in sm_telemetry:
-                return sm_telemetry[nk]
+            if c:
+                nk = _norm_key(str(c))
+                if nk and nk in sm_telemetry:
+                    return sm_telemetry[nk]
 
         best = None
         best_id = -1
@@ -1439,7 +1454,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             pass
 
         # Actualizar solo el slot pedido con la fila más reciente de la BD o Supabase
-        best = _latest_any_row(tables, d.get("device_key") or "", device)
+        best = _latest_any_row(tables, d.get("device_key") or "", device, plant, d.get("plant_id") or "")
         if best and not _is_today(best.get("timestamp")) and not _is_today(best.get("update_time")) and not _is_today(best.get("inserted_at")) and not _is_db_row_from_today(best):
             best = None
 

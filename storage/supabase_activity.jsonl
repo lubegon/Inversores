@@ -167,3 +167,9 @@
 {"timestamp": "2026-08-11T19:25:39.836317", "action": "fetch_telemetry", "status": "success", "detail": "Descargadas 0 lecturas de telemetría de values", "provider": "webui"}
 {"timestamp": "2026-08-11T19:25:40.245084", "action": "fetch_telemetry", "status": "success", "detail": "Descargadas 1000 lecturas de telemetría de growatt", "provider": "webui"}
 {"timestamp": "2026-08-11T19:25:43.210729", "action": "upload_report", "status": "success", "detail": "Reporte Reporte Voltguard.xlsx subido", "provider": "webui"}
+{"timestamp": "2026-08-11T19:30:45.927097", "action": "fetch_telemetry", "status": "success", "detail": "Descargadas 1000 lecturas de telemetría de shinemonitor", "provider": "webui"}
+{"timestamp": "2026-08-11T19:30:57.281307", "action": "fetch_telemetry", "status": "success", "detail": "Descargadas 1000 lecturas de telemetría de shinemonitor", "provider": "webui"}
+{"timestamp": "2026-08-11T19:31:17.528030", "action": "fetch_telemetry", "status": "success", "detail": "Descargadas 1000 lecturas de telemetría de shinemonitor", "provider": "webui"}
+{"timestamp": "2026-08-11T19:31:19.663544", "action": "fetch_telemetry", "status": "success", "detail": "Descargadas 0 lecturas de telemetría de values", "provider": "webui"}
+{"timestamp": "2026-08-11T19:31:20.533104", "action": "fetch_telemetry", "status": "success", "detail": "Descargadas 1000 lecturas de telemetría de growatt", "provider": "webui"}
+{"timestamp": "2026-08-11T19:31:24.538480", "action": "upload_report", "status": "success", "detail": "Reporte Reporte Voltguard.xlsx subido", "provider": "webui"}

@@ -1,5 +1,5 @@
 {
-  "version": "2.14.6",
+  "version": "2.14.7",
   "release_date": "2026-08-11",
-  "notes": "Fix: Validación estricta de fecha de hoy (11-08-2026) descartando registros antiguos (07-08, 10-08) e indexación por serial para populación limpia de métricas por slot en Growatt y ShineMonitor."
+  "notes": "Fix: Corrección completa en la populación de la fila Tarde mediante inclusión de plant_name y clean_name en cands de _latest_any_row, asegurando coherencia total de timestamps y métricas."
 }
