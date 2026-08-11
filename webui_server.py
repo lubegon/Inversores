@@ -1155,12 +1155,15 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             prev = {} if is_after else (existing.get(k) or {})
             if prev and not _is_today(prev.get("timestamp")):
                 prev = {}
+            has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
                 if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
                     continue
-                if hn in prev:
+                if prev and hn in prev and prev.get(hn) not in (None, "", " "):
                     ws.cell(r, c).value = prev.get(hn)
+                elif not is_after and not has_prev_val:
+                    ws.cell(r, c).value = "SIN DATOS"
                 else:
                     ws.cell(r, c).value = None
 
@@ -1187,10 +1190,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                     hn = _norm_key(h)
                     if hn in (_norm_key("plant_name"), _norm_key("device_name"), _norm_key("hora")):
                         continue
-                    if hn == _norm_key("timestamp"):
-                        ws.cell(r, c).value = "NO_DATA"
-                    else:
-                        ws.cell(r, c).value = None
+                    ws.cell(r, c).value = "SIN DATOS"
             else:
                 status = str(best.get("status") or "").strip()
                 for c, h in enumerate(headers, start=1):
@@ -1212,10 +1212,12 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                                 break
 
                     if hn == _norm_key("timestamp"):
-                        if val in (None, "", " ") and status:
-                            val = status
+                        if val in (None, "", " "):
+                            val = status or "SIN DATOS"
                         else:
                             val = _format_short_timestamp(val)
+                    elif val in (None, "", " "):
+                        val = "SIN DATOS"
                     ws.cell(r, c).value = val
             break
 
@@ -1431,12 +1433,15 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
             prev = {} if is_after else (existing.get((_norm_key(mon_name), slot_i)) or {})
             if prev and not _is_today(prev.get("timestamp")):
                 prev = {}
+            has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("monitor_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
                 if hn in (_norm_key("monitor_name"), _norm_key("hora")):
                     continue
-                if hn in prev:
+                if prev and hn in prev and prev.get(hn) not in (None, "", " "):
                     ws.cell(r, c).value = prev.get(hn)
+                elif not is_after and not has_prev_val:
+                    ws.cell(r, c).value = "SIN DATOS"
                 else:
                     ws.cell(r, c).value = None
 
@@ -1465,10 +1470,7 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                     hn = _norm_key(h)
                     if hn in (_norm_key("monitor_name"), _norm_key("nodo"), _norm_key("hora")):
                         continue
-                    if hn == _norm_key("timestamp"):
-                        ws.cell(target_r, c).value = "NO_DATA"
-                    else:
-                        ws.cell(target_r, c).value = None
+                    ws.cell(target_r, c).value = "SIN DATOS"
             else:
                 colmap = table_map.get(t) or {}
                 for c, h in enumerate(headers, start=1):
@@ -1490,9 +1492,11 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                                 break
                     if hn == _norm_key("timestamp"):
                         if val in (None, "", " "):
-                            val = "NO_DATA"
+                            val = "SIN DATOS"
                         else:
                             val = _format_short_timestamp(val)
+                    elif val in (None, "", " "):
+                        val = "SIN DATOS"
                     ws.cell(target_r, c).value = val
 
         row += 4
@@ -1712,12 +1716,15 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
             prev = {} if is_after else (existing.get((_norm_key(plant_name), slot_i)) or {})
             if prev and not _is_today(prev.get("timestamp")):
                 prev = {}
+            has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
                 if hn in (_norm_key("plant_name"), _norm_key("hora")):
                     continue
-                if hn in prev:
+                if prev and hn in prev and prev.get(hn) not in (None, "", " "):
                     ws.cell(r, c).value = prev.get(hn)
+                elif not is_after and not has_prev_val:
+                    ws.cell(r, c).value = "SIN DATOS"
                 else:
                     ws.cell(r, c).value = None
 
@@ -1747,10 +1754,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                     hn = _norm_key(h)
                     if hn in (_norm_key("plant_name"), _norm_key("hora")):
                         continue
-                    if hn == _norm_key("timestamp"):
-                        ws.cell(target_r, c).value = "NO_DATA"
-                    else:
-                        ws.cell(target_r, c).value = None
+                    ws.cell(target_r, c).value = "SIN DATOS"
             else:
                 colmap = table_map.get(t) or {}
                 for c, h in enumerate(headers, start=1):
@@ -1772,9 +1776,11 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                                 break
                     if hn == _norm_key("timestamp"):
                         if val in (None, "", " "):
-                            val = "NO_DATA"
+                            val = "SIN DATOS"
                         else:
                             val = _format_short_timestamp(val)
+                    elif val in (None, "", " "):
+                        val = "SIN DATOS"
                     ws.cell(target_r, c).value = val
 
         row += 4

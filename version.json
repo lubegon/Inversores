@@ -1,5 +1,5 @@
 {
-  "version": "2.12.4",
+  "version": "2.12.5",
   "release_date": "2026-08-11",
-  "notes": "Fix: Limpieza de cadenas de depuración jstree ('dev ... anchor') y resolución precisa de nombres reales de plantas en la hoja Shine Monitor del Excel."
+  "notes": "Feat/Fix: Relleno automático de 'SIN DATOS' en slots y celdas sin mediciones para Shine Monitor, Values y Growatt en los reportes Excel."
 }
