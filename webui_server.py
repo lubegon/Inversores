@@ -185,29 +185,45 @@ def _is_today(val: Any) -> bool:
     if not val:
         return False
 
-    local_today = datetime.now().strftime("%Y-%m-%d")
-    utc_today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    allowed_dates = {local_today, utc_today}
+    now_local = datetime.now()
+    now_utc = datetime.now(timezone.utc)
+    allowed_dates = {
+        now_local.strftime("%Y-%m-%d"),
+        now_local.strftime("%d-%m-%Y"),
+        now_local.strftime("%d/%m/%Y"),
+        now_local.strftime("%Y/%m/%d"),
+        now_utc.strftime("%Y-%m-%d"),
+        now_utc.strftime("%d-%m-%Y"),
+        now_utc.strftime("%d/%m/%Y"),
+        now_utc.strftime("%Y/%m/%d"),
+    }
     try:
         from zoneinfo import ZoneInfo
-        allowed_dates.add(datetime.now(ZoneInfo("America/Caracas")).strftime("%Y-%m-%d"))
+        caracas_now = datetime.now(ZoneInfo("America/Caracas"))
+        allowed_dates.add(caracas_now.strftime("%Y-%m-%d"))
+        allowed_dates.add(caracas_now.strftime("%d-%m-%Y"))
+        allowed_dates.add(caracas_now.strftime("%d/%m/%Y"))
+        allowed_dates.add(caracas_now.strftime("%Y/%m/%d"))
     except Exception:
         pass
 
     if hasattr(val, "strftime"):
         try:
-            return val.strftime("%Y-%m-%d") in allowed_dates
+            return val.strftime("%Y-%m-%d") in allowed_dates or val.strftime("%d-%m-%Y") in allowed_dates
         except Exception:
             pass
 
     s = str(val).strip()
-    if not s or s in ("NO_DATA", "NO_TABLE", "NO_TAB", "NO_INVERTER"):
+    if not s or s in ("NO_DATA", "NO_TABLE", "NO_TAB", "NO_INVERTER", "SIN DATOS"):
         return False
 
-    match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
-    if match:
-        date_str = match.group(1)
-        return date_str in allowed_dates
+    match_iso = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
+    if match_iso and match_iso.group(1) in allowed_dates:
+        return True
+
+    match_lat = re.search(r"\b(\d{2}-\d{2}-\d{4})\b", s)
+    if match_lat and match_lat.group(1) in allowed_dates:
+        return True
 
     for d in allowed_dates:
         if d in s:
