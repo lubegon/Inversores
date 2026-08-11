@@ -1159,252 +1159,150 @@ def main() -> None:
 
                     for dev_index in range(device_count):
                         try:
-                            page.wait_for_timeout(200)
-                            tree = _ensure_tree_loaded(
-                                page,
-                                timeout_ms=20_000,
-                                retries=1,
-                                run_dir=run_dir,
-                                debug_name=f"{plant.plant_id}-tree-reload-{dev_index+1:02d}",
-                            )
-                            if _tree_is_empty(tree):
-                                raise RuntimeError("TREE_EMPTY")
-                        except Exception as e:
-                            retryable = isinstance(e, PlaywrightTimeoutError) or (str(e).strip() == "TREE_EMPTY")
-                            if retryable:
+                            # Intentar usar el anchor capturado previamente sin re-expandir todo el árbol
+                            anchors = device_anchors
+                            if dev_index >= len(anchors):
                                 try:
-                                    print(
-                                        f"  [RETRY] re-cargando árbol (device {dev_index+1}/{device_count})",
-                                        flush=True,
-                                    )
+                                    tree = _ensure_tree_loaded(page, timeout_ms=5_000, retries=0, run_dir=run_dir)
+                                    _, anchors = _collect_inverters_and_device_anchors(tree)
                                 except Exception:
-                                    pass
-                                try:
-                                    plant_name, tree = _select_plant_and_load_tree(
-                                        page,
-                                        plant=plant,
-                                        run_dir=run_dir,
-                                        user=user,
-                                        password=password,
-                                        storage_state_path=storage_state_path,
-                                        timeout_ms=20_000,
-                                        retries=0,
-                                    )
-                                except Exception as e2:
-                                    detail = str(e2) or str(e)
+                                    break
+
+                            if dev_index >= len(anchors):
+                                break
+
+                            a = anchors[dev_index]
+                            device_name = " ".join(a.inner_text().split()).strip() or f"device_{dev_index+1}"
+                            device_key = _device_key(a)
+
+                            desired = _desired_table_name(plant_name, device_name, device_count)
+                            desired = _claim_friendly_table_name(
+                                conn,
+                                desired=desired,
+                                device_key=device_key,
+                                plant_id=plant.plant_id,
+                            )
+
+                            existing = _get_device_table(conn, device_key)
+                            if existing and existing != desired and _table_exists(conn, existing):
+                                conn.execute(f'ALTER TABLE "{existing}" RENAME TO "{desired}"')
+                                conn.commit()
+
+                            device_table = desired
+
+                            _ensure_device_table(conn, device_table)
+                            _upsert_meta_device(
+                                conn,
+                                device_key=device_key,
+                                plant_id=plant.plant_id,
+                                device_name=device_name,
+                                table_name=device_table,
+                                now=captured_at,
+                            )
+
+                            print(f"  - Device [{dev_index+1}/{device_count}]: {device_name}", flush=True)
+
+                            try:
+                                a.click(timeout=3_000)
+                            except Exception:
+                                # Fallback si el elemento se desasoció del DOM
+                                tree = _ensure_tree_loaded(page, timeout_ms=5_000, retries=0, run_dir=run_dir)
+                                _, anchors = _collect_inverters_and_device_anchors(tree)
+                                if dev_index < len(anchors):
+                                    a = anchors[dev_index]
+                                    a.click(timeout=3_000)
+
+                            opened = _click_data_details(
+                                page,
+                                timeout_ms=4_000,
+                                run_dir=run_dir,
+                                debug_name=f"{plant.plant_id}-03-notab-{dev_index+1:02d}",
+                            )
+
+                            if not opened:
+                                _insert_plant_event(
+                                    conn,
+                                    captured_at=captured_at,
+                                    plant_id=plant.plant_id,
+                                    plant_name=plant_name,
+                                    status="DATA_DETAILS_TIMEOUT",
+                                    status_detail=f"No apareció pestaña Data Details para {device_name}",
+                                )
+                                conn.commit()
+                                continue
+
+                            last_sig: str | None = None
+                            try:
+                                grid_el, headers = _ensure_grid_data(
+                                    page,
+                                    timeout_ms=3_000,
+                                    attempts=1,
+                                    last_signature=None,
+                                )
+                                update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
+                                last_sig = _get_grid_signature(grid_el)
+                            except Exception as e:
+                                detail = str(e)
+                                if "NO_DATA_TODAY" in detail:
                                     _insert_plant_event(
                                         conn,
                                         captured_at=captured_at,
                                         plant_id=plant.plant_id,
                                         plant_name=plant_name,
-                                        status="TREE_RELOAD_ERROR",
-                                        status_detail=(detail[:500] if detail else None),
+                                        status="NO_DATA_TODAY",
+                                        status_detail=f"Sin datos hoy para ({device_name})",
                                     )
                                     conn.commit()
-                                    _dump_debug(
-                                        page,
-                                        run_dir,
-                                        f"{plant.plant_id}-03-tree-reload-error-{dev_index+1:02d}",
-                                    )
-                                    break
-                            else:
-                                detail = str(e)
+                                    print(f"    -> Sin datos hoy para {device_name}", flush=True)
+                                    continue
+
                                 _insert_plant_event(
                                     conn,
                                     captured_at=captured_at,
                                     plant_id=plant.plant_id,
                                     plant_name=plant_name,
-                                    status="TREE_RELOAD_ERROR",
-                                    status_detail=(detail[:500] if detail else None),
+                                    status="GRID_ERROR",
+                                    status_detail=f"Error al leer grid ({device_name}): {detail[:300]}",
                                 )
                                 conn.commit()
-                                _dump_debug(
-                                    page,
-                                    run_dir,
-                                    f"{plant.plant_id}-03-tree-reload-error-{dev_index+1:02d}",
-                                )
-                                break
-
-                        try:
-                            _, anchors = _collect_inverters_and_device_anchors(tree)
-                        except Exception as e:
-                            detail = str(e)
-                            _insert_plant_event(
-                                conn,
-                                captured_at=captured_at,
-                                plant_id=plant.plant_id,
-                                plant_name=plant_name,
-                                status="TREE_PARSE_ERROR",
-                                status_detail=(detail[:500] if detail else None),
-                            )
-                            conn.commit()
-                            _dump_debug(page, run_dir, f"{plant.plant_id}-03-tree-parse-error-{dev_index+1:02d}")
-                            break
-
-                        if dev_index >= len(anchors):
-                            break
-
-                        a = anchors[dev_index]
-                        device_name = " ".join(a.inner_text().split()).strip() or f"device_{dev_index+1}"
-                        device_key = _device_key(a)
-
-                        desired = _desired_table_name(plant_name, device_name, device_count)
-                        desired = _claim_friendly_table_name(
-                            conn,
-                            desired=desired,
-                            device_key=device_key,
-                            plant_id=plant.plant_id,
-                        )
-
-                        existing = _get_device_table(conn, device_key)
-                        if existing and existing != desired and _table_exists(conn, existing):
-                            conn.execute(f'ALTER TABLE "{existing}" RENAME TO "{desired}"')
-                            conn.commit()
-
-                        device_table = desired
-
-                        _ensure_device_table(conn, device_table)
-                        _upsert_meta_device(
-                            conn,
-                            device_key=device_key,
-                            plant_id=plant.plant_id,
-                            device_name=device_name,
-                            table_name=device_table,
-                            now=captured_at,
-                        )
-
-                        print(f"  - Device [{dev_index+1}/{len(device_anchors)}]: {device_name}", flush=True)
-
-                        a.click()
-                        page.wait_for_timeout(300)
-                        opened = _click_data_details(
-                            page,
-                            timeout_ms=10_000,
-                            run_dir=run_dir,
-                            debug_name=f"{plant.plant_id}-03-notab-{dev_index+1:02d}",
-                        )
-                        if not opened:
-                            try:
-                                print(
-                                    f"  [RETRY] Data Details no aparece; reintentando planta/device...",
-                                    flush=True,
-                                )
-                            except Exception:
-                                pass
-
-                            try:
-                                plant_name_retry, tree_retry = _select_plant_and_load_tree(
-                                    page,
-                                    plant=plant,
-                                    run_dir=run_dir,
-                                    user=user,
-                                    password=password,
-                                    storage_state_path=storage_state_path,
-                                    timeout_ms=20_000,
-                                    retries=1,
-                                )
-                                if plant_name_retry:
-                                    plant_name = plant_name_retry
-                                _, anchors_retry = _collect_inverters_and_device_anchors(tree_retry)
-                                if dev_index < len(anchors_retry):
-                                    a_retry = anchors_retry[dev_index]
-                                    a_retry.click()
-                                    page.wait_for_timeout(300)
-                                    opened = _click_data_details(
-                                        page,
-                                        timeout_ms=10_000,
-                                        run_dir=run_dir,
-                                        debug_name=f"{plant.plant_id}-03-notab-retry-{dev_index+1:02d}",
-                                    )
-                            except Exception:
-                                pass
-
-                        if not opened:
-                            _insert_plant_event(
-                                conn,
-                                captured_at=captured_at,
-                                plant_id=plant.plant_id,
-                                plant_name=plant_name,
-                                status="DATA_DETAILS_TIMEOUT",
-                                status_detail=f"No apareció pestaña Data Details para {device_name}",
-                            )
-                            conn.commit()
-                            continue
-
-                        last_sig: str | None = None
-                        try:
-                            grid_el, headers = _ensure_grid_data(
-                                page,
-                                timeout_ms=8_000,
-                                attempts=1,
-                                last_signature=None,
-                            )
-                            update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
-                            last_sig = _get_grid_signature(grid_el)
-                        except Exception as e:
-                            detail = str(e)
-                            if "NO_DATA_TODAY" in detail:
-                                _insert_plant_event(
-                                    conn,
-                                    captured_at=captured_at,
-                                    plant_id=plant.plant_id,
-                                    plant_name=plant_name,
-                                    status="NO_DATA_TODAY",
-                                    status_detail=f"Sin datos hoy para ({device_name})",
-                                )
-                                conn.commit()
-                                print(f"    -> Sin datos hoy para {device_name}", flush=True)
                                 continue
 
-                            _insert_plant_event(
+                            if not update_time and all(v is None for v in voltages.values()):
+                                try:
+                                    _click_grid_refresh_button(page)
+                                    grid_el, headers = _ensure_grid_data(
+                                        page,
+                                        timeout_ms=3_000,
+                                        attempts=1,
+                                        last_signature=last_sig,
+                                    )
+                                    update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
+                                except Exception:
+                                    pass
+
+                            _insert_voltage_reading(
                                 conn,
+                                table_name=device_table,
                                 captured_at=captured_at,
                                 plant_id=plant.plant_id,
                                 plant_name=plant_name,
-                                status="GRID_ERROR",
-                                status_detail=f"Error al leer grid ({device_name}): {detail[:300]}",
+                                device_key=device_key,
+                                device_name=device_name,
+                                update_time=update_time,
+                                voltages=voltages,
+                                raw_data=raw_data,
                             )
                             conn.commit()
-                            _dump_debug(
-                                page,
-                                run_dir,
-                                f"{plant.plant_id}-04-grid-error-{dev_index+1:02d}",
+
+                            print(
+                                f"    -> OK ({device_table}) update_time={update_time} voltages={voltages}",
+                                flush=True,
                             )
-                            continue
+                        except Exception as dev_err:
+                            print(f"  [WARN] Error procesando dispositivo {dev_index+1}: {dev_err}", flush=True)
 
-                        if not update_time and all(v is None for v in voltages.values()):
-                            print("    * (Reintento de lectura por tabla vacía...)", flush=True)
-                            try:
-                                _click_grid_refresh_button(page)
-                                page.wait_for_timeout(300)
-                                grid_el, headers = _ensure_grid_data(
-                                    page,
-                                    timeout_ms=45_000,
-                                    attempts=2,
-                                    last_signature=last_sig,
-                                )
-                                update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
-                            except Exception:
-                                pass
-
-                        _insert_voltage_reading(
-                            conn,
-                            table_name=device_table,
-                            captured_at=captured_at,
-                            plant_id=plant.plant_id,
-                            plant_name=plant_name,
-                            device_key=device_key,
-                            device_name=device_name,
-                            update_time=update_time,
-                            voltages=voltages,
-                            raw_data=raw_data,
-                        )
-                        conn.commit()
-
-                        print(
-                            f"    -> OK ({device_table}) update_time={update_time} voltages={voltages}",
-                            flush=True,
-                        )
+                _process_sync_queue()
+                _update_sync_status("shinemonitor", idx + 1, len(plants), "syncing")
 
                 page.wait_for_timeout(200)
 
@@ -1418,6 +1316,25 @@ def main() -> None:
         conn.close()
 
     _process_sync_queue()
+
+
+def _update_sync_status(provider: str, current: int, total: int, status: str = "syncing") -> None:
+    try:
+        status_file = BASE_DIR / "storage" / "sync_status.json"
+        status_file.parent.mkdir(parents=True, exist_ok=True)
+        status_file.write_text(
+            json.dumps({
+                "provider": provider,
+                "total": total,
+                "current": current,
+                "percentage": int((current / total) * 100) if total > 0 else 100,
+                "status": status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }),
+            encoding="utf-8"
+        )
+    except Exception:
+        pass
 
 
 def _process_sync_queue() -> None:

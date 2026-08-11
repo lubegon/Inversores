@@ -56,6 +56,27 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _update_sync_status(provider: str, current: int, total: int, status: str = "syncing", base_dir: Path | None = None) -> None:
+    try:
+        if base_dir is None:
+            base_dir = Path(__file__).resolve().parents[2]
+        status_file = base_dir / "storage" / "sync_status.json"
+        status_file.parent.mkdir(parents=True, exist_ok=True)
+        status_file.write_text(
+            json.dumps({
+                "provider": provider,
+                "total": total,
+                "current": current,
+                "percentage": int((current / total) * 100) if total > 0 else 100,
+                "status": status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }),
+            encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -444,7 +465,19 @@ def main() -> None:
                                 "ac_input_voltage_frequency": row.ac_input_voltage_frequency,
                                 "ac_output_voltage_frequency": row.ac_output_voltage_frequency,
                                 "table_name": table_name,
+                                "plant_name": plant_name,
+                                "device_name": monitor_name,
+                                "device_serial": device_serial,
+                                "Battery Voltage": row.battery_voltage,
+                                "PV1/PV2 Voltage": row.pv1_pv2_voltage,
+                                "PV1/PV2 Recharging Current": row.pv1_pv2_recharging_current,
+                                "Total Charge Current": row.total_charge_current,
+                                "AC Input Voltage/Frequency": row.ac_input_voltage_frequency,
+                                "AC Output Voltage/Frequency": row.ac_output_voltage_frequency,
                             }
+                            if isinstance(metrics, dict):
+                                telemetry_metrics.update(metrics)
+
                             save_telemetry_reading(
                                 provider="growatt",
                                 device_key=dev_key,
@@ -455,6 +488,9 @@ def main() -> None:
                             )
                         except Exception as supa_err:
                             log.warn(f"Supabase sync warning (Planta {plant_name}): {supa_err}")
+
+                        # Actualizar estado de subida en tiempo real para las barras de la WebUI
+                        _update_sync_status("growatt", idx + 1, len(plant_names), "syncing", base_dir)
 
                         try:
                             from providers.system_logger import log_sys_event
@@ -499,6 +535,7 @@ def main() -> None:
                 }
                 _write_json(out_json, payload)
                 log.ok(f"Guardado: {out_json}")
+                _update_sync_status("growatt", len(plant_names), len(plant_names), "completed", base_dir)
             except Exception as e:
                 try:
                     dump_debug(page, base_dir, "growatt-dashboard-exception")

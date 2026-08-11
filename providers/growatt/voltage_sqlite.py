@@ -117,6 +117,13 @@ def insert_monitor_row(conn: sqlite3.Connection, *, table_name: str, row: Iterab
                 "total_charge_current": values[5],
                 "ac_input_voltage_frequency": values[6],
                 "ac_output_voltage_frequency": values[7],
+                "table_name": table_name,
+                "Battery Voltage": values[2],
+                "PV1/PV2 Voltage": values[3],
+                "PV1/PV2 Recharging Current": values[4],
+                "Total Charge Current": values[5],
+                "AC Input Voltage/Frequency": values[6],
+                "AC Output Voltage/Frequency": values[7],
             }
             sb.save_device("growatt", "growatt_main", table_name, device_name=table_name)
             sb.save_telemetry_reading(

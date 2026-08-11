@@ -521,6 +521,34 @@ def _sqlite_latest_ok_row(conn: sqlite3.Connection, table: str) -> dict[str, Any
         return _sqlite_latest_row(conn, table)
 
 
+def _format_short_timestamp(val: Any) -> str:
+    """Convierte un timestamp ISO (ej: 2026-08-07T20:04:28.287599+00:00) a fecha corta: DD-MM-YYYY HH:MM:SS.
+
+    Si ya es fecha corta o status especial ('NO_DATA', etc.), se retorna tal cual.
+    """
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if not s or s.upper() in ("NO_DATA", "NO_TABLE", "NO_TAB", "NO_INVERTER", "ERROR", "ONLINE", "OFFLINE"):
+        return s
+
+    try:
+        if "T" in s:
+            s_clean = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s_clean)
+            return dt.strftime("%d-%m-%Y %H:%M:%S")
+    except Exception:
+        pass
+
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?", s)
+    if m:
+        year, month, day, hour, minute, second = m.groups()
+        sec = second or "00"
+        return f"{day}-{month}-{year} {hour}:{minute}:{sec}"
+
+    return s
+
+
 def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     try:
@@ -541,7 +569,8 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
             for r in rows:
                 dev_k = str(r.get("device_key") or "").strip()
                 m = dict(r.get("metrics") or {})
-                ts = str(r.get("update_time") or r.get("inserted_at") or "").strip()
+                ts_raw = str(r.get("update_time") or r.get("inserted_at") or "").strip()
+                ts = _format_short_timestamp(ts_raw)
                 st = str(r.get("status") or "").strip()
                 m["Timestamp"] = ts
                 m["update_time"] = ts
@@ -1136,6 +1165,8 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                     if hn == _norm_key("timestamp"):
                         if val in (None, "", " ") and status:
                             val = status
+                        else:
+                            val = _format_short_timestamp(val)
                     ws.cell(r, c).value = val
             break
 
@@ -1408,8 +1439,11 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                             if _norm_key(bk) == hn:
                                 val = bv
                                 break
-                    if hn == _norm_key("timestamp") and val in (None, "", " "):
-                        val = "NO_DATA"
+                    if hn == _norm_key("timestamp"):
+                        if val in (None, "", " "):
+                            val = "NO_DATA"
+                        else:
+                            val = _format_short_timestamp(val)
                     ws.cell(target_r, c).value = val
 
         row += 4
@@ -1687,8 +1721,11 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                             if _norm_key(bk) == hn:
                                 val = bv
                                 break
-                    if hn == _norm_key("timestamp") and val in (None, "", " "):
-                        val = "NO_DATA"
+                    if hn == _norm_key("timestamp"):
+                        if val in (None, "", " "):
+                            val = "NO_DATA"
+                        else:
+                            val = _format_short_timestamp(val)
                     ws.cell(target_r, c).value = val
 
         row += 4
