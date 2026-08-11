@@ -913,15 +913,28 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
 
     existing = _iter_existing_rows()
 
+    # Cargar mapa de plantas desde storage/shinemonitor-plants.json
+    json_pid_to_plant: dict[str, str] = {}
+    try:
+        sm_json_path = STORAGE_DIR / "shinemonitor-plants.json"
+        if sm_json_path.exists():
+            sm_data = json.loads(sm_json_path.read_text(encoding="utf-8", errors="ignore") or "{}")
+            for p in (sm_data.get("plants") or []):
+                p_id = str((p or {}).get("plant_id") or "").strip()
+                p_nm = str((p or {}).get("name") or "").strip()
+                if p_id and p_nm:
+                    json_pid_to_plant[p_id] = p_nm
+    except Exception:
+        json_pid_to_plant = {}
+
     # DB: plant_id -> plant_name
-    pid_to_plant: dict[str, str] = {}
+    pid_to_plant: dict[str, str] = dict(json_pid_to_plant)
     try:
         for pid, pname in conn_sm.execute("SELECT plant_id, plant_name FROM meta_plants").fetchall():
-            if pid is None or pname is None:
-                continue
-            pid_to_plant[str(pid)] = str(pname)
+            if pid is not None and pname is not None and str(pname).strip():
+                pid_to_plant[str(pid)] = str(pname).strip()
     except Exception:
-        pid_to_plant = {}
+        pass
 
     # DB: meta_devices (principal)
     devices: dict[tuple[str, str], dict[str, Any]] = {}
@@ -941,7 +954,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             if not device or not table:
                 continue
             k = (_norm_key(plant), _norm_key(device))
-            d = devices.setdefault(k, {"plant": plant, "device": device, "device_key": dev_k, "tables": []})
+            d = devices.setdefault(k, {"plant": plant, "plant_id": pid, "device": device, "device_key": dev_k, "tables": []})
             if dev_k and not d.get("device_key"):
                 d["device_key"] = dev_k
             if table not in d["tables"]:
@@ -982,7 +995,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             continue
         dev = _derive_device_name(t)
         k = ("", _norm_key(dev))
-        d = devices.setdefault(k, {"plant": "", "device": dev, "tables": []})
+        d = devices.setdefault(k, {"plant": dev, "device": dev, "tables": []})
         if t not in d["tables"]:
             d["tables"].append(t)
 
@@ -1000,11 +1013,15 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             continue
         pname = str(m.get("plant_name") or m.get("plant") or "").strip()
         dname = str(m.get("device_name") or m.get("device") or dev_k).strip()
+        pid = str(m.get("plant_id") or "").strip()
+        if not pname and pid:
+            pname = pid_to_plant.get(pid, "")
         k = (_norm_key(pname), _norm_key(dname))
         if k not in existing_keys:
             existing_keys.add(k)
             device_list.append({
                 "plant": pname,
+                "plant_id": pid,
                 "device": dname,
                 "device_key": dev_k,
                 "tables": [],
@@ -1076,6 +1093,17 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         tables = list(d.get("tables") or [])
         if not device:
             continue
+
+        best = _latest_any_row(tables, d.get("device_key") or "", device)
+
+        if not plant and best:
+            plant = str(best.get("plant_name") or best.get("plant") or "").strip()
+        if not plant and d.get("plant_id"):
+            plant = pid_to_plant.get(str(d.get("plant_id")), "")
+        if not plant and tables:
+            plant = _derive_device_name(tables[0])
+        if not plant:
+            plant = device
 
         # Preservar datos existentes para los 4 slots
         for i, hl in enumerate(hour_labels):
