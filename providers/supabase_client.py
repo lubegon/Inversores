@@ -345,8 +345,8 @@ class SupabaseManager:
     def upload_report_file(self, file_path: str | Path, destination_name: str | None = None) -> str | None:
         """Sube un archivo de reporte (Excel/CSV) a Supabase Storage y retorna su URL publica/firmada.
 
-        Usa la API REST directa de Supabase Storage con x-upsert:true para evitar
-        problemas de RLS del SDK de Python. Hace fallback al SDK si falla.
+        Combina el SDK oficial de Supabase con fallback REST directo para asegurar
+        la compatibilidad total y evitar errores HTTP 400 cuando el archivo ya existe.
         """
         if not self.is_enabled():
             return None
@@ -365,46 +365,53 @@ class SupabaseManager:
             with open(path, "rb") as f:
                 file_bytes = f.read()
 
-            # Método 1: REST directo con urllib (evita bugs de RLS del SDK)
-            import urllib.request as _urlreq
-            import ssl as _ssl
-            from urllib.parse import quote as _urlquote
+            uploaded = False
 
-            quoted_dest = _urlquote(str(dest), safe="")
-            storage_url = f"{self.url.rstrip('/')}/storage/v1/object/{self.bucket_name}/{quoted_dest}"
-            req = _urlreq.Request(
-                storage_url,
-                data=file_bytes,
-                method="POST",
-                headers={
+            # Método 1: SDK Oficial (upload con x-upsert o update si ya existe)
+            try:
+                self.client.storage.from_(self.bucket_name).upload(
+                    path=dest,
+                    file=file_bytes,
+                    file_options={"x-upsert": "true", "content-type": content_type},
+                )
+                uploaded = True
+            except Exception:
+                try:
+                    self.client.storage.from_(self.bucket_name).update(
+                        path=dest,
+                        file=file_bytes,
+                        file_options={"content-type": content_type},
+                    )
+                    uploaded = True
+                except Exception:
+                    pass
+
+            # Método 2: REST directo si el SDK no completó la subida
+            if not uploaded:
+                import urllib.request as _urlreq
+                import ssl as _ssl
+                from urllib.parse import quote as _urlquote
+
+                quoted_dest = _urlquote(str(dest), safe="/")
+                storage_url = f"{self.url.rstrip('/')}/storage/v1/object/{self.bucket_name}/{quoted_dest}"
+                headers = {
                     "Authorization": f"Bearer {self._storage_auth_key}",
                     "apikey": self._storage_auth_key,
                     "Content-Type": content_type,
                     "x-upsert": "true",
-                },
-            )
-            ctx = _ssl._create_unverified_context()
-            try:
-                with _urlreq.urlopen(req, timeout=20, context=ctx) as resp:
-                    resp.read()  # consumir respuesta
-            except Exception as rest_err:
-                # Si el REST falla (ej: 400 ya existe), intentar PUT para upsert
-                if "400" in str(rest_err) or "already" in str(rest_err).lower():
-                    req2 = _urlreq.Request(
-                        storage_url,
-                        data=file_bytes,
-                        method="PUT",
-                        headers={
-                            "Authorization": f"Bearer {self._storage_auth_key}",
-                            "apikey": self._storage_auth_key,
-                            "Content-Type": content_type,
-                            "x-upsert": "true",
-                        },
-                    )
-                    with _urlreq.urlopen(req2, timeout=20, context=ctx) as resp2:
-                        resp2.read()
-                else:
-                    raise
+                }
+                ctx = _ssl._create_unverified_context()
+                try:
+                    req = _urlreq.Request(storage_url, data=file_bytes, method="POST", headers=headers)
+                    with _urlreq.urlopen(req, timeout=20, context=ctx) as resp:
+                        resp.read()
+                except Exception:
+                    try:
+                        req2 = _urlreq.Request(storage_url, data=file_bytes, method="PUT", headers=headers)
+                        with _urlreq.urlopen(req2, timeout=20, context=ctx) as resp2:
+                            resp2.read()
+                    except Exception:
+                        pass
 
             # Obtener URL pública
             public_url = self.client.storage.from_(self.bucket_name).get_public_url(dest)
