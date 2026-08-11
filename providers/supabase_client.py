@@ -368,7 +368,10 @@ class SupabaseManager:
             # Método 1: REST directo con urllib (evita bugs de RLS del SDK)
             import urllib.request as _urlreq
             import ssl as _ssl
-            storage_url = f"{self.url.rstrip('/')}/storage/v1/object/{self.bucket_name}/{dest}"
+            from urllib.parse import quote as _urlquote
+
+            quoted_dest = _urlquote(str(dest), safe="")
+            storage_url = f"{self.url.rstrip('/')}/storage/v1/object/{self.bucket_name}/{quoted_dest}"
             req = _urlreq.Request(
                 storage_url,
                 data=file_bytes,

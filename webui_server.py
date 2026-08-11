@@ -186,7 +186,7 @@ def _is_today(val: Any) -> bool:
         return False
 
     local_today = datetime.now().strftime("%Y-%m-%d")
-    utc_today = datetime.utcnow().strftime("%Y-%m-%d")
+    utc_today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     allowed_dates = {local_today, utc_today}
     try:
         from zoneinfo import ZoneInfo

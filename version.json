@@ -1,5 +1,5 @@
 {
-  "version": "2.12.2",
+  "version": "2.12.3",
   "release_date": "2026-08-11",
-  "notes": "Fix: Resolución infalible de plant_name en reporte Excel para ShineMonitor utilizando mapas de plantas y fallbacks."
+  "notes": "Fix: Corregir codificación de URL en subidas a Supabase Storage (espacios/caracteres especiales) y eliminar DeprecationWarning de datetime.utcnow()."
 }
