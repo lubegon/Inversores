@@ -678,14 +678,14 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
                 if "T" in ts_raw or "Z" in ts_raw or "+" in ts_raw:
                     hour = (hour - 4) % 24
 
-                if 0 <= hour < 6:
-                    s_name = "medianoche"
-                elif 6 <= hour < 12:
+                if 6 <= hour < 12:
                     s_name = "manana"
-                elif 12 <= hour < 17:
+                elif 12 <= hour < 15:
                     s_name = "mediodia"
-                else:
+                elif 15 <= hour < 19:
                     s_name = "tarde"
+                else:
+                    s_name = "medianoche"
 
                 dev_k = str(r.get("device_key") or "").strip()
                 m = dict(r.get("metrics") or {})
