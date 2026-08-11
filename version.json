@@ -1,5 +1,5 @@
 {
-  "version": "2.14.5",
+  "version": "2.14.6",
   "release_date": "2026-08-11",
-  "notes": "Fix: Corrección completa en la populación de métricas numéricas (voltajes, corrientes, potencias) para horas/slots anteriores (Medio Día, Mañana, Media Noche) mediante _has_numeric_metrics y macheo difuso de unidades con Supabase."
+  "notes": "Fix: Validación estricta de fecha de hoy (11-08-2026) descartando registros antiguos (07-08, 10-08) e indexación por serial para populación limpia de métricas por slot en Growatt y ShineMonitor."
 }

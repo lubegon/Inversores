@@ -687,15 +687,23 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
 
                 raw_key = dev_k.split("__")[0].strip() if "__" in dev_k else dev_k
                 clean_name = dev_k.split("__")[-1].strip() if "__" in dev_k else ""
+                p_name = str(m.get("plant_name") or "").strip()
+                d_serial = str(m.get("device_serial") or "").strip()
+                tbl_name = str(r.get("table_name") or m.get("table_name") or "").strip()
+                combo1 = f"{p_name} {d_serial}".strip() if (p_name and d_serial) else ""
+                combo2 = f"{clean_name} {d_serial}".strip() if (clean_name and d_serial) else ""
 
                 keys_to_index = [
                     dev_k,
                     raw_key,
                     clean_name,
+                    combo1,
+                    combo2,
+                    p_name,
+                    d_serial,
+                    tbl_name,
                     m.get("plant_id"),
-                    m.get("plant_name"),
                     m.get("device_name"),
-                    m.get("table_name"),
                 ]
                 for k in keys_to_index:
                     if k:
@@ -1432,6 +1440,8 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
 
         # Actualizar solo el slot pedido con la fila más reciente de la BD o Supabase
         best = _latest_any_row(tables, d.get("device_key") or "", device)
+        if best and not _is_today(best.get("timestamp")) and not _is_today(best.get("update_time")) and not _is_today(best.get("inserted_at")) and not _is_db_row_from_today(best):
+            best = None
 
         # buscar fila del slot en este bloque
         for i, hl in enumerate(hour_labels):
@@ -2008,7 +2018,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                         prev = existing[kc]
                         break
             if (not prev or not _has_numeric_metrics(prev)) and not is_after:
-                for ck in (t, plant_name):
+                for ck in (t, plant_name, _derive_plant_name(t), plant_name.split()[0]):
                     if ck:
                         supa_m = growatt_slot_telemetry.get((_norm_key(ck), slot_i))
                         if supa_m:
@@ -2047,12 +2057,18 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 break
 
         # Buscar en Supabase primero (norm del table_name coincide con device_key norm)
-        best = growatt_telemetry.get(_norm_key(t)) or growatt_telemetry.get(_norm_key(plant_name))
+        best = (
+            growatt_telemetry.get(_norm_key(t))
+            or growatt_telemetry.get(_norm_key(plant_name))
+            or growatt_telemetry.get(_norm_key(_derive_plant_name(t)))
+        )
         if best is None:
             db_row = _latest_row(t)
-            if db_row is not None and not _is_db_row_from_today(db_row):
-                db_row = None
-            best = db_row
+            if db_row is not None and (_is_today(db_row.get("timestamp")) or _is_today(db_row.get("update_time")) or _is_db_row_from_today(db_row)):
+                best = db_row
+
+        if best and not _is_today(best.get("timestamp")) and not _is_today(best.get("update_time")) and not _is_today(best.get("inserted_at")) and not _is_db_row_from_today(best):
+            best = None
 
         if target_r is not None:
             if best is None:
