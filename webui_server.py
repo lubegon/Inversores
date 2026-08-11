@@ -313,14 +313,6 @@ def _report_history_copy_from_current(*, slot: str) -> Path | None:
             out_path = REPORTS_DIR / out_name
             i += 1
         shutil.copy2(REPORT_PATH, out_path)
-        
-        # Copiar también a la carpeta de descargas del usuario local
-        try:
-            downloads_dir = Path.home() / "Downloads"
-            if downloads_dir.exists() and downloads_dir.is_dir():
-                shutil.copy2(REPORT_PATH, downloads_dir / out_name)
-        except Exception:
-            pass
 
         # Subir copia a Supabase Storage (si está configurado)
         try:
