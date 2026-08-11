@@ -541,6 +541,24 @@ def _format_short_timestamp(val: Any) -> str:
     return s
 
 
+def _is_offgrid_status(val: Any) -> bool:
+    if not val:
+        return False
+    s = str(val).strip().lower()
+    return "offgrid" in s or "off-grid" in s or "off grid" in s or "offline" in s or "desconectado" in s
+
+
+def _apply_row_fill_if_offgrid(ws: Any, r: int, num_cols: int, status_str: Any = "") -> None:
+    if _is_offgrid_status(status_str):
+        try:
+            from openpyxl.styles import PatternFill
+            yellow_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+            for c in range(1, num_cols + 1):
+                ws.cell(r, c).fill = yellow_fill
+        except Exception:
+            pass
+
+
 def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     try:
@@ -1167,6 +1185,9 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                 else:
                     ws.cell(r, c).value = None
 
+            if prev:
+                _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
+
         # Merge plant/device over 4 rows
         try:
             ws.merge_cells(start_row=row, start_column=1, end_row=row + 3, end_column=1)
@@ -1219,6 +1240,7 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                     elif val in (None, "", " "):
                         val = "SIN DATOS"
                     ws.cell(r, c).value = val
+                _apply_row_fill_if_offgrid(ws, r, len(headers), status)
             break
 
         row += 4
@@ -1445,6 +1467,9 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                 else:
                     ws.cell(r, c).value = None
 
+            if prev:
+                _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
+
         try:
             ws.merge_cells(start_row=row, start_column=1, end_row=row + 3, end_column=1)
         except Exception:
@@ -1472,7 +1497,7 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                         continue
                     ws.cell(target_r, c).value = "SIN DATOS"
             else:
-                colmap = table_map.get(t) or {}
+                status = str(best.get("status") or "").strip()
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
                     if hn in (_norm_key("monitor_name"), _norm_key("nodo"), _norm_key("hora")):
@@ -1492,12 +1517,13 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                                 break
                     if hn == _norm_key("timestamp"):
                         if val in (None, "", " "):
-                            val = "SIN DATOS"
+                            val = status or "SIN DATOS"
                         else:
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
                         val = "SIN DATOS"
                     ws.cell(target_r, c).value = val
+                _apply_row_fill_if_offgrid(ws, target_r, len(headers), status)
 
         row += 4
 
@@ -1728,6 +1754,9 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 else:
                     ws.cell(r, c).value = None
 
+            if prev:
+                _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
+
         try:
             ws.merge_cells(start_row=row, start_column=1, end_row=row + 3, end_column=1)
         except Exception:
@@ -1756,6 +1785,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                         continue
                     ws.cell(target_r, c).value = "SIN DATOS"
             else:
+                status = str(best.get("status") or "").strip()
                 colmap = table_map.get(t) or {}
                 for c, h in enumerate(headers, start=1):
                     hn = _norm_key(h)
@@ -1776,12 +1806,13 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                                 break
                     if hn == _norm_key("timestamp"):
                         if val in (None, "", " "):
-                            val = "SIN DATOS"
+                            val = status or "SIN DATOS"
                         else:
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
                         val = "SIN DATOS"
                     ws.cell(target_r, c).value = val
+                _apply_row_fill_if_offgrid(ws, target_r, len(headers), status)
 
         row += 4
 

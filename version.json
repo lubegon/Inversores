@@ -1,5 +1,5 @@
 {
-  "version": "2.12.5",
+  "version": "2.13.0",
   "release_date": "2026-08-11",
-  "notes": "Feat/Fix: Relleno automático de 'SIN DATOS' en slots y celdas sin mediciones para Shine Monitor, Values y Growatt en los reportes Excel."
+  "notes": "Feat: Resaltado automático en fondo amarillo (PatternFill FFF2CC) para filas de inversores con status Offgrid en las descargas Excel de Shine Monitor, Values y Growatt."
 }
