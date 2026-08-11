@@ -948,6 +948,19 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                 pid_to_plant[str(pid)] = str(pname).strip()
     except Exception:
         pass
+    try:
+        from providers.supabase_client import get_supabase
+        sb = get_supabase()
+        if sb.is_enabled():
+            res = sb.client.table("monitors_plants").select("plant_id, name").eq("provider", "shinemonitor").execute()
+            if res and hasattr(res, "data") and res.data:
+                for r in res.data:
+                    p_id = str(r.get("plant_id") or "").strip()
+                    p_nm = str(r.get("name") or "").strip()
+                    if p_id and p_nm and p_nm.lower() not in ("shine monitor", "shinemonitor"):
+                        pid_to_plant[p_id] = p_nm
+    except Exception:
+        pass
 
     # DB: meta_devices (principal)
     devices: dict[str, dict[str, Any]] = {}
@@ -1107,35 +1120,75 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         if not pname or not str(pname).strip():
             return True
         s = str(pname).strip().lower()
-        if s.startswith("dev ") or s.endswith("anchor") or "b0021" in s or "5 512" in s or s == "999999":
+        invalid_exact = {"shine monitor", "shinemonitor", "growatt", "growhatt", "values", "provider", "n/a", "none", "null", "unknown", "sin datos", "sin nombre", "999999", "test"}
+        if s in invalid_exact:
+            return True
+        if (
+            s.startswith("dev ")
+            or s.startswith("device_")
+            or s.startswith("device ")
+            or s.endswith("anchor")
+            or "b0021" in s
+            or "5 512" in s
+        ):
             return True
         return False
+
+    def _resolve_plant_name(d: dict[str, Any], best: dict[str, Any] | None) -> str:
+        # 1. Nombre directo de la planta si es válido
+        p = str(d.get("plant") or "").strip()
+        if not _is_invalid_plant_name(p):
+            return p
+
+        # 2. Búsqueda por plant_id directo
+        pid = str(d.get("plant_id") or "").strip()
+        if pid and pid in pid_to_plant:
+            return pid_to_plant[pid]
+
+        # 3. Búsqueda en el último registro disponible (best)
+        if best:
+            cand = str(best.get("plant_name") or best.get("plant") or "").strip()
+            if not _is_invalid_plant_name(cand):
+                return cand
+            cand_pid = str(best.get("plant_id") or "").strip()
+            if cand_pid and cand_pid in pid_to_plant:
+                return pid_to_plant[cand_pid]
+
+        # 4. Extraer ID numérico (5-8 dígitos) de device_key, tablas o device_name
+        search_txt = f"{d.get('device_key') or ''} {' '.join(d.get('tables') or [])} {d.get('device') or ''} {p}"
+        m = re.search(r"(\d{5,8})", search_txt)
+        if m:
+            extracted_pid = m.group(1)
+            if extracted_pid in pid_to_plant:
+                return pid_to_plant[extracted_pid]
+
+        # 5. Nombre del dispositivo si es válido
+        dev = str(d.get("device") or "").strip()
+        if not _is_invalid_plant_name(dev):
+            return _clean_display_name(dev)
+
+        # 6. Nombre derivado de la tabla
+        tables = list(d.get("tables") or [])
+        if tables:
+            derived = _derive_device_name(tables[0])
+            if not _is_invalid_plant_name(derived):
+                return derived
+
+        # 7. Fallback amigable
+        if pid:
+            return f"Planta {pid}"
+        dev_k = str(d.get("device_key") or "").strip()
+        if dev_k:
+            return f"Inversor {dev_k}"
+        return "Inversor (Sin Nombre)"
 
     # Construir filas
     row = 2
     for d in device_list:
-        plant = str(d.get("plant") or "").strip()
         device = str(d.get("device") or "").strip()
         tables = list(d.get("tables") or [])
-        pid = str(d.get("plant_id") or "").strip()
-
-        if _is_invalid_plant_name(plant):
-            plant = ""
-
         best = _latest_any_row(tables, d.get("device_key") or "", device)
-
-        if not plant and best:
-            candidate_p = str(best.get("plant_name") or best.get("plant") or "").strip()
-            if not _is_invalid_plant_name(candidate_p):
-                plant = candidate_p
-        if not plant and pid:
-            plant = pid_to_plant.get(pid, "")
-        if not plant and tables:
-            plant = _derive_device_name(tables[0])
-            if _is_invalid_plant_name(plant):
-                plant = ""
-        if not plant:
-            plant = "Shine Monitor"
+        plant = _resolve_plant_name(d, best)
 
         # Preservar datos existentes para los 4 slots
         for i, hl in enumerate(hour_labels):

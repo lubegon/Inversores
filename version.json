@@ -1,5 +1,5 @@
 {
-  "version": "2.14.0",
+  "version": "2.14.1",
   "release_date": "2026-08-11",
-  "notes": "Feature: Regla de 4 descargas diarias acumulativas, 'SIN DATOS' únicamente en columna timestamp (métricas vacías en blanco) y eliminación de columna device_name redundante en reportes."
+  "notes": "Fix: Corrección en la resolución de nombres de plantas e inversores en la descarga de reportes Excel, filtrando nombres de proveedor genéricos ('Shine Monitor') y recuperando los nombres reales desde SQLite, JSON de plantas y Supabase."
 }
