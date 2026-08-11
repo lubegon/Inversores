@@ -1172,7 +1172,13 @@ def main() -> None:
                                 break
 
                             a = anchors[dev_index]
-                            device_name = " ".join(a.inner_text().split()).strip() or f"device_{dev_index+1}"
+                            raw_dev_text = " ".join(a.inner_text().split()).strip()
+                            clean_dev_text = re.sub(r"\s+anchor$", "", raw_dev_text, flags=re.I)
+                            clean_dev_text = re.sub(r"^dev\s+", "", clean_dev_text, flags=re.I)
+                            m_ser = re.search(r"([a-zA-Z0-9_-]{6,25})", clean_dev_text)
+                            if m_ser and (" " in clean_dev_text or len(clean_dev_text) > 20):
+                                clean_dev_text = m_ser.group(1)
+                            device_name = clean_dev_text.strip() or f"device_{dev_index+1}"
                             device_key = _device_key(a)
 
                             desired = _desired_table_name(plant_name, device_name, device_count)

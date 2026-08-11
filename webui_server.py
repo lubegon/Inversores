@@ -1085,25 +1085,54 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                     best = rd
         return best
 
+    def _clean_display_name(val: str) -> str:
+        if not val:
+            return ""
+        s = str(val).strip()
+        s = re.sub(r"\s+anchor$", "", s, flags=re.I)
+        s = re.sub(r"^dev\s+", "", s, flags=re.I)
+        m = re.search(r"([a-zA-Z0-9_-]{6,25})", s)
+        if m and (" " in s or len(s) > 20):
+            s = m.group(1)
+        return s.strip()
+
+    def _is_invalid_plant_name(pname: str) -> bool:
+        if not pname or not str(pname).strip():
+            return True
+        s = str(pname).strip().lower()
+        if s.startswith("dev ") or s.endswith("anchor") or "b0021" in s or "5 512" in s or s == "999999":
+            return True
+        return False
+
     # Construir filas
     row = 2
     for d in device_list:
         plant = str(d.get("plant") or "").strip()
         device = str(d.get("device") or "").strip()
         tables = list(d.get("tables") or [])
-        if not device:
-            continue
+        pid = str(d.get("plant_id") or "").strip()
+
+        if _is_invalid_plant_name(plant):
+            plant = ""
 
         best = _latest_any_row(tables, d.get("device_key") or "", device)
 
         if not plant and best:
-            plant = str(best.get("plant_name") or best.get("plant") or "").strip()
-        if not plant and d.get("plant_id"):
-            plant = pid_to_plant.get(str(d.get("plant_id")), "")
+            candidate_p = str(best.get("plant_name") or best.get("plant") or "").strip()
+            if not _is_invalid_plant_name(candidate_p):
+                plant = candidate_p
+        if not plant and pid:
+            plant = pid_to_plant.get(pid, "")
         if not plant and tables:
             plant = _derive_device_name(tables[0])
+            if _is_invalid_plant_name(plant):
+                plant = ""
         if not plant:
-            plant = device
+            plant = "Shine Monitor"
+
+        device = _clean_display_name(device)
+        if not device:
+            continue
 
         # Preservar datos existentes para los 4 slots
         for i, hl in enumerate(hour_labels):

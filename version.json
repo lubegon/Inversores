@@ -1,5 +1,5 @@
 {
-  "version": "2.12.3",
+  "version": "2.12.4",
   "release_date": "2026-08-11",
-  "notes": "Fix: Corregir codificación de URL en subidas a Supabase Storage (espacios/caracteres especiales) y eliminar DeprecationWarning de datetime.utcnow()."
+  "notes": "Fix: Limpieza de cadenas de depuración jstree ('dev ... anchor') y resolución precisa de nombres reales de plantas en la hoja Shine Monitor del Excel."
 }
