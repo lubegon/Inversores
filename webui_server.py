@@ -828,6 +828,21 @@ def _style_report_sheet(ws) -> None:
         pass
 
 
+def _clean_metric_val(val: Any) -> Any:
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s in ("", " ", "-", "--", "---"):
+        return None
+    s_lower = s.lower()
+    if s_lower in ("-/-v", "-/-a", "-a", "-v/-hz", "-v/-hz", "-/-", "-v", "-v/-", "-a/-a", "n/a", "none", "null"):
+        return None
+    if re.fullmatch(r"[-/\s]*(v|a|hz|w|kwh|kw|v/hz|a/a)?", s_lower):
+        if "-" in s_lower or "/" in s_lower:
+            return None
+    return s
+
+
 def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None, slot: str) -> None:
     """Genera/actualiza la hoja Shine Monitor desde la BD.
 
@@ -1277,6 +1292,8 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
                         val = None
+                    else:
+                        val = _clean_metric_val(val)
                     ws.cell(r, c).value = val
                 _apply_row_fill_if_offgrid(ws, r, len(headers), status)
             break
@@ -1566,6 +1583,8 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
                         val = None
+                    else:
+                        val = _clean_metric_val(val)
                     ws.cell(target_r, c).value = val
                 _apply_row_fill_if_offgrid(ws, target_r, len(headers), status)
 
@@ -1861,6 +1880,8 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                             val = _format_short_timestamp(val)
                     elif val in (None, "", " "):
                         val = None
+                    else:
+                        val = _clean_metric_val(val)
                     ws.cell(target_r, c).value = val
                 _apply_row_fill_if_offgrid(ws, target_r, len(headers), status)
 
