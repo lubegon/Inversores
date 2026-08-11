@@ -1,5 +1,5 @@
 {
-  "version": "2.14.3",
+  "version": "2.14.4",
   "release_date": "2026-08-11",
-  "notes": "Fix: Corrección crítica en la preservación de slots acumulativos (medio día, mañana, medianoche) al generar la tarde, agregando soporte de fechas DD-MM-YYYY en la función de validación _is_today."
+  "notes": "Fix: Extracción limpia de nombres reales de planta/inversor desde la clave de dispositivo (__NombrePlanta), eliminación de registros huérfanos de prueba y recuperación automática por slot desde Supabase para medio día, mañana y medianoche."
 }

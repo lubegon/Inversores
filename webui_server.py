@@ -629,6 +629,84 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str], dict[str, Any]]:
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    try:
+        from providers.supabase_client import get_supabase
+        sb = get_supabase()
+        if not sb.is_enabled():
+            return {}
+        import ssl, urllib.request
+        url = f"{sb.url.rstrip('/')}/rest/v1/telemetry_readings?select=provider,device_key,update_time,status,metrics,inserted_at&provider=eq.{provider}&order=inserted_at.desc&limit=3000"
+        headers = {
+            "apikey": sb.key,
+            "Authorization": f"Bearer {sb.key}",
+        }
+        req = urllib.request.Request(url, headers=headers)
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+            for r in rows:
+                ts_raw = str(r.get("update_time") or r.get("inserted_at") or "").strip()
+                if not ts_raw or not _is_today(ts_raw):
+                    continue
+
+                clean_ts = ts_raw.split(".")[0].split("+")[0].replace("T", " ")
+                dt = None
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+                    try:
+                        dt = datetime.strptime(clean_ts, fmt)
+                        break
+                    except Exception:
+                        pass
+                if not dt:
+                    continue
+
+                hour = dt.hour
+                if "T" in ts_raw or "Z" in ts_raw or "+" in ts_raw:
+                    hour = (hour - 4) % 24
+
+                if 0 <= hour < 6:
+                    s_name = "medianoche"
+                elif 6 <= hour < 12:
+                    s_name = "manana"
+                elif 12 <= hour < 17:
+                    s_name = "mediodia"
+                else:
+                    s_name = "tarde"
+
+                dev_k = str(r.get("device_key") or "").strip()
+                m = dict(r.get("metrics") or {})
+                ts = _format_short_timestamp(ts_raw)
+                st = str(r.get("status") or "").strip()
+                m["Timestamp"] = ts
+                m["update_time"] = ts
+                m["timestamp"] = ts
+                m["status"] = st
+                m["connection_status"] = st
+
+                clean_name = ""
+                if "__" in dev_k:
+                    clean_name = dev_k.split("__")[-1].strip()
+
+                keys_to_index = [
+                    dev_k,
+                    clean_name,
+                    m.get("plant_id"),
+                    m.get("plant_name"),
+                    m.get("device_name"),
+                    m.get("table_name"),
+                ]
+                for k in keys_to_index:
+                    if k:
+                        nk = _norm_key(str(k))
+                        if nk and (nk, s_name) not in out:
+                            out[(nk, s_name)] = m
+    except Exception:
+        pass
+    return out
+
+
 def _sheet_is_row_slot_layout(ws) -> bool:
     try:
         a1 = ws.cell(1, 1).value
@@ -1147,17 +1225,30 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             s = m.group(1)
         return s.strip()
 
+    def _extract_name_from_key(text: str) -> str:
+        if not text:
+            return ""
+        s = str(text).strip()
+        if "__" in s:
+            name_part = s.split("__")[-1].strip()
+            if name_part and not _is_invalid_plant_name(name_part):
+                return name_part
+        return ""
+
     def _is_invalid_plant_name(pname: str) -> bool:
         if not pname or not str(pname).strip():
             return True
         s = str(pname).strip().lower()
-        invalid_exact = {"shine monitor", "shinemonitor", "growatt", "growhatt", "values", "provider", "n/a", "none", "null", "unknown", "sin datos", "sin nombre", "999999", "test"}
+        invalid_exact = {"shine monitor", "shinemonitor", "growatt", "growhatt", "values", "provider", "n/a", "none", "null", "unknown", "sin datos", "sin nombre", "inversor (sin nombre)", "999999", "planta 999999", "test"}
         if s in invalid_exact:
             return True
         if (
             s.startswith("dev ")
             or s.startswith("device_")
             or s.startswith("device ")
+            or s.startswith("inversor dev")
+            or s.startswith("inversor (sin nombre)")
+            or "sin nombre" in s
             or s.endswith("anchor")
             or "b0021" in s
             or "5 512" in s
@@ -1166,6 +1257,12 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         return False
 
     def _resolve_plant_name(d: dict[str, Any], best: dict[str, Any] | None) -> str:
+        # 0. Extraer sufijo __ (formato DEV$#...__NombrePlanta)
+        for cand_key in (d.get("device_key"), d.get("device"), d.get("plant"), (best or {}).get("device_key"), (best or {}).get("plant_name")):
+            extracted = _extract_name_from_key(str(cand_key or ""))
+            if extracted:
+                return extracted
+
         # 1. Nombre directo de la planta si es válido
         p = str(d.get("plant") or "").strip()
         if not _is_invalid_plant_name(p):
@@ -1210,8 +1307,15 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
             return f"Planta {pid}"
         dev_k = str(d.get("device_key") or "").strip()
         if dev_k:
-            return f"Inversor {dev_k}"
+            extracted = _extract_name_from_key(dev_k)
+            if extracted:
+                return extracted
+            m_ser = re.search(r"B\d{10,15}", dev_k)
+            if m_ser:
+                return f"Inversor {m_ser.group(0)}"
         return "Inversor (Sin Nombre)"
+
+    sm_slot_telemetry = _fetch_supabase_telemetry_by_slot_map("shinemonitor")
 
     # Construir filas
     row = 2
@@ -1219,7 +1323,11 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         device = str(d.get("device") or "").strip()
         tables = list(d.get("tables") or [])
         best = _latest_any_row(tables, d.get("device_key") or "", device)
+        if best and not _is_db_row_from_today(best) and not _is_today(best.get("timestamp")) and not _is_today(best.get("update_time")):
+            best = None
         plant = _resolve_plant_name(d, best)
+        if _is_invalid_plant_name(plant) and best is None:
+            continue
 
         # Preservar datos existentes para los 4 slots
         for i, hl in enumerate(hour_labels):
@@ -1236,10 +1344,24 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                     is_after = True
             except ValueError:
                 pass
-            k = (_norm_key(plant), slot_i)
-            prev = {} if is_after else (existing.get(k) or {})
+            k_cands = [(_norm_key(plant), slot_i), (_norm_key(d.get("device_key") or ""), slot_i), (_norm_key(d.get("device") or ""), slot_i)]
+            prev = {}
+            if not is_after:
+                for kc in k_cands:
+                    if kc[0] and kc in existing:
+                        prev = existing[kc]
+                        break
             if prev and not _is_today(prev.get("timestamp")):
                 prev = {}
+
+            # Fallback a Supabase por slot si el Excel no tenía la data previa
+            if not prev and not is_after:
+                for ck in (d.get("device_key"), plant, d.get("device"), d.get("plant_id")):
+                    if ck:
+                        supa_m = sm_slot_telemetry.get((_norm_key(ck), slot_i))
+                        if supa_m:
+                            prev = supa_m
+                            break
             has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
@@ -1798,6 +1920,8 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
     def _latest_row(table: str) -> dict[str, Any] | None:
         return _sqlite_latest_row(conn_growatt, table)
 
+    growatt_slot_telemetry = _fetch_supabase_telemetry_by_slot_map("growatt")
+
     row = 2
     for plant_name, t in plants:
         if not plant_name or not t:
@@ -1818,9 +1942,22 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                     is_after = True
             except ValueError:
                 pass
-            prev = {} if is_after else (existing.get((_norm_key(plant_name), slot_i)) or {})
+            k_cands = [(_norm_key(plant_name), slot_i), (_norm_key(t), slot_i)]
+            prev = {}
+            if not is_after:
+                for kc in k_cands:
+                    if kc[0] and kc in existing:
+                        prev = existing[kc]
+                        break
             if prev and not _is_today(prev.get("timestamp")):
                 prev = {}
+            if not prev and not is_after:
+                for ck in (t, plant_name):
+                    if ck:
+                        supa_m = growatt_slot_telemetry.get((_norm_key(ck), slot_i))
+                        if supa_m:
+                            prev = supa_m
+                            break
             has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
