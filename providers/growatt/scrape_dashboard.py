@@ -127,35 +127,88 @@ def _extract_panel_device(page) -> tuple[str, str, str]:
 
 
 def _extract_metrics_from_embedded_table(page) -> dict[str, str]:
-    """Lee la tabla embebida dentro de `i.tips.w` (sin hover).
+    """Lee las tablas de métricas embebidas o tooltips en la vista del dashboard Growatt.
 
-    Retorna dict por etiqueta exacta (ej. 'Battery Voltage' -> '56.4V').
+    Retorna dict por etiqueta (ej. 'Battery Voltage' -> '56.4V').
     """
 
-    table = page.locator(SEL_TIPS_BATTERY_TABLE).filter(has_text=re.compile(r"Battery\s+Voltage", re.I)).first
-    if table.count() == 0:
-        return {}
-
-    try:
-        table.wait_for(state="attached", timeout=15_000)
-    except Exception:
-        return {}
-
-    rows = table.locator("tbody tr")
     out: dict[str, str] = {}
-    for i in range(rows.count()):
-        tr = rows.nth(i)
+
+    # 1. Buscar en la tabla principal embebida (animPan3 i.tips.w table o similares)
+    table_locators = [
+        SEL_TIPS_BATTERY_TABLE,
+        "div.animPan i.tips.w table",
+        "i.tips.w table",
+        "#panel_device table",
+        ".deviceBox table",
+        "table:has(td)"
+    ]
+
+    table = None
+    for loc in table_locators:
         try:
-            label = _s(tr.locator("td").nth(0).inner_text())
-            value = _s(tr.locator("td").nth(1).inner_text())
+            t = page.locator(loc).filter(has_text=re.compile(r"(Battery|Voltage|Current|AC|PV)", re.I)).first
+            if t.count() > 0:
+                table = t
+                break
         except Exception:
-            continue
-        if not label:
-            continue
-        if value:
-            # Normaliza espacios (ej. '117.4V/60HZ' vs '117.4 V/60 HZ')
-            value = re.sub(r"\s+", "", value)
-        out[label] = value
+            pass
+
+    if table is not None:
+        # Intento con retry backoff para tolerar latencias de carga
+        for attempt in range(3):
+            try:
+                table.wait_for(state="attached", timeout=5_000 * (attempt + 1))
+                break
+            except Exception:
+                if attempt == 2:
+                    break
+                time.sleep(0.5 * (2 ** attempt))
+
+        try:
+            rows = table.locator("tbody tr, tr")
+            for i in range(rows.count()):
+                tr = rows.nth(i)
+                try:
+                    tds = tr.locator("td")
+                    if tds.count() >= 2:
+                        label = _s(tds.nth(0).inner_text())
+                        value = _s(tds.nth(1).inner_text())
+                        if label and value:
+                            value = re.sub(r"\s+", "", value)
+                            out[label] = value
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # 2. Fallback vía JS para extraer pares Label: Value en cualquier elemento de tips o métricas
+    if not out:
+        try:
+            js_metrics = page.evaluate(
+                """() => {
+                    const res = {};
+                    const rows = Array.from(document.querySelectorAll('i.tips.w table tr, .deviceBox tr, div[class*="tips"] tr, .param-item'));
+                    rows.forEach(r => {
+                        const tds = r.querySelectorAll('td, span');
+                        if (tds.length >= 2) {
+                            const k = (tds[0].innerText || '').strip ? tds[0].innerText.trim() : '';
+                            const v = (tds[1].innerText || '').strip ? tds[1].innerText.trim() : '';
+                            if (k && v && (k.includes('Voltage') || k.includes('Current') || k.includes('Battery') || k.includes('AC') || k.includes('PV'))) {
+                                res[k] = v.replace(/\\s+/g, '');
+                            }
+                        }
+                    });
+                    return res;
+                }"""
+            )
+            if js_metrics and isinstance(js_metrics, dict):
+                for k, v in js_metrics.items():
+                    if k not in out and v:
+                        out[k] = v
+        except Exception:
+            pass
+
     return out
 
 
@@ -163,19 +216,19 @@ def _row_from_metrics(*, update_time: str, connection_status: str, metrics: dict
     def pick(*keys: str) -> str:
         for k in keys:
             for kk, vv in metrics.items():
-                if kk.strip().lower() == k.strip().lower():
+                if k.strip().lower() in kk.strip().lower() or kk.strip().lower() in k.strip().lower():
                     return vv
         return ""
 
     return GrowattRow(
         update_time=update_time,
         connection_status=connection_status,
-        battery_voltage=pick("Battery Voltage"),
-        pv1_pv2_voltage=pick("PV1/PV2 Voltage"),
-        pv1_pv2_recharging_current=pick("PV1/PV2 Recharging Current"),
-        total_charge_current=pick("Total Charge Current"),
-        ac_input_voltage_frequency=pick("Ac Input Voltage/Frequency", "AC Input Voltage/Frequency"),
-        ac_output_voltage_frequency=pick("AC Output Voltage/Frequency", "Ac Output Voltage/Frequency"),
+        battery_voltage=pick("Battery Voltage", "Batt Volt", "Battery Volt"),
+        pv1_pv2_voltage=pick("PV1/PV2 Voltage", "PV1 Voltage", "PV Voltage"),
+        pv1_pv2_recharging_current=pick("PV1/PV2 Recharging Current", "PV Current", "Recharging Current"),
+        total_charge_current=pick("Total Charge Current", "Charge Current"),
+        ac_input_voltage_frequency=pick("Ac Input Voltage/Frequency", "AC Input Voltage/Frequency", "AC Input", "Grid Voltage"),
+        ac_output_voltage_frequency=pick("AC Output Voltage/Frequency", "Ac Output Voltage/Frequency", "AC Output", "Inverter Voltage"),
     )
 
 

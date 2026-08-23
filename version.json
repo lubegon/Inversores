@@ -1,5 +1,5 @@
 {
-  "version": "2.14.9",
-  "release_date": "2026-08-11",
-  "notes": "Fix: Eliminación de filas duplicadas sin serial en la hoja Growhatt y formateo de nombres limpios por inversor real (ej: Nodo Ultimas Noticias HUEFBJV03H)."
+  "version": "2.15.0",
+  "release_date": "2026-08-23",
+  "notes": "Mejoras de resiliencia en scraping Growatt, validación anti-archivos vacíos en Supabase, reajuste de rangos de turnos y corrección de variables en reportes."
 }

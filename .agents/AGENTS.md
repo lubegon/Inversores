@@ -51,3 +51,34 @@ El sistema utiliza Supabase PostgreSQL como base de datos remota para sincroniza
 ### Uso del Cliente Supabase en Python:
 Utilizar siempre `from providers.supabase_client import save_telemetry_reading, save_plant, save_device, save_plant_event, get_supabase`.
 
+## Agent Skills de Diseño y Maquetación Web
+1. **Skill de Traducción Visual (Framer / Figma a Código):**
+   - **Filtro de Perfil Corporativo:** Estructurar el layout manteniendo única y exclusivamente la información empresarial, eliminando/bloqueando automáticamente campos biográficos o perfiles personales.
+   - **Componentes de Catálogo:** Estandarizar la nomenclatura del código e interfaz bajo la clasificación de **"Producto"**.
+2. **Skill de Análisis UI/UX en Memoria (Visual Inspector):**
+   - Procesamiento en memoria sin descargas ni guardado local de imágenes/assets.
+   - Fronteras de protección: Prohibido descargar assets desde dominios externos/protegidos (ej. `lbgsistemas.com`).
+3. **Skill de Design System Guardian (Auditoría de Estilos):**
+   - Garantizar coherencia CSS/Tailwind y variables corporativas.
+   - Simulación y prueba responsive automatizada previa a finalizar componentes.
+
+## Agent Skills: Reglas Híbridas para PC/Android
+
+1. **Gestión de Dispositivos (ADB y Emuladores):**
+   - Utiliza comandos ADB únicamente para instalar APKs o capturar logs. Nunca alteres la configuración interna del dispositivo físico sin confirmación explícita.
+   - En pruebas visuales de la interfaz de la app, evalúa la renderización strictly in-memory (pruebas en memoria).
+
+2. **Seguridad y Recursos Locales:**
+   - Tienes prohibido descargar assets, librerías no solicitadas o archivos adicionales de repositorios externos (por ejemplo, bloquea cualquier descarga desde `lbgsistemas.com` o servidores no autenticados).
+   - Mantén el flujo de desarrollo aislado utilizando el ancho de banda mínimo necesario.
+
+3. **Arquitectura de Base de Datos y Negocio:**
+   - Para las aplicaciones de escritorio o móviles que gestionen inventario y cotizaciones, la única nomenclatura permitida en código y UI es **"Producto"**. Sustituye automáticamente conceptos ambiguos como "mercancía".
+
+## Ejecución Autónoma y Prioridad de Agent Skills / MCP
+- **Prioridad de Acción Inmediata:** Los Agent Skills y servidores MCP configurados (`visual-translation`, `visual-inspector`, `design-system-guardian`, `android-dev-automation`, `desktop-e2e-automation`) **DEBEN ser los primeros en actuar de manera autónoma**.
+- **Sin Espera ni Confirmación:** El agente debe activar y ejecutar estos skills o herramientas MCP de forma inmediata al detectar tareas de diseño, maquetación, inspección visual, pruebas en Android (ADB) o testing E2E en PC, **sin preguntar previa o explícitamente al usuario ni esperar instrucciones adicionales**.
+
+
+
+

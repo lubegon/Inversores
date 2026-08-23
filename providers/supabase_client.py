@@ -351,9 +351,9 @@ class SupabaseManager:
         if not self.is_enabled():
             return None
         path = Path(file_path)
-        if not path.exists():
-            logger.error(f"[Supabase Storage] Archivo no existe: {file_path}")
-            log_supabase_activity("upload_report", "error", f"Archivo no existe: {file_path}", "webui")
+        if not path.exists() or path.stat().st_size == 0:
+            logger.error(f"[Supabase Storage] Archivo no existe o está vacío (0 bytes): {file_path}")
+            log_supabase_activity("upload_report", "error", f"Archivo no existe o vacio: {file_path}", "webui")
             return None
 
         dest = destination_name or path.name

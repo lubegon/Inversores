@@ -678,11 +678,11 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
                 if "T" in ts_raw or "Z" in ts_raw or "+" in ts_raw:
                     hour = (hour - 4) % 24
 
-                if 6 <= hour < 12:
+                if 5 <= hour < 10:
                     s_name = "manana"
                 elif 12 <= hour < 15:
                     s_name = "mediodia"
-                elif 15 <= hour < 19:
+                elif 17 <= hour < 22:
                     s_name = "tarde"
                 else:
                     s_name = "medianoche"
@@ -1566,6 +1566,7 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
         monitors.append((_derive_monitor_name(t), t))
 
     values_telemetry = _fetch_supabase_telemetry_map("values")
+    values_slot_telemetry = _fetch_supabase_telemetry_by_slot_map("values")
     if not monitors:
         for dev_k, m in values_telemetry.items():
             if dev_k in ("test_rest_fallback", "test_key_225"):
@@ -1698,6 +1699,7 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
     for mon_name, t in monitors:
         if not mon_name or not t:
             continue
+        colmap = table_map.get(t, {})
 
         # Escribir bloque de 4 filas
         for i, hl in enumerate(hour_labels):
