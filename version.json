@@ -1,5 +1,5 @@
 {
-  "version": "2.15.1",
+  "version": "2.15.2",
   "release_date": "2026-09-03",
-  "notes": "Filtro estricto de inversores en excel, validacion de fecha para data previa en turnos, y ajuste de etiquetas de horarios."
+  "notes": "Correccion de duplicacion de datos en horarios incorrectos validando de forma estricta los rangos horarios al llenar los reportes (ej. evitar data de la noche en la tarde)."
 }

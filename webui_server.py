@@ -2099,16 +2099,31 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 target_r = row + i
                 break
 
-        # Buscar en Supabase primero (norm del table_name coincide con device_key norm)
-        best = (
-            growatt_telemetry.get(_norm_key(t))
-            or growatt_telemetry.get(_norm_key(plant_name))
-            or growatt_telemetry.get(_norm_key(_derive_plant_name(t)))
+        # Buscar en Supabase primero, pero STRICTAMENTE para el slot solicitado
+        # (Esto evita que una lectura de Medianoche se duplique en Tarde si no hay datos nuevos)
+        supa_target = (
+            growatt_slot_telemetry.get((_norm_key(t), slot))
+            or growatt_slot_telemetry.get((_norm_key(plant_name), slot))
+            or growatt_slot_telemetry.get((_norm_key(_derive_plant_name(t)), slot))
         )
-        if best is None:
+        if supa_target and (_is_today(supa_target.get("timestamp")) or _is_today(supa_target.get("update_time")) or _is_today(supa_target.get("inserted_at")) or _is_db_row_from_today(supa_target)):
+            best = supa_target
+        else:
+            best = None
             db_row = _latest_row(t)
             if db_row is not None and (_is_today(db_row.get("timestamp")) or _is_today(db_row.get("update_time")) or _is_db_row_from_today(db_row)):
-                best = db_row
+                ts_raw = str(db_row.get("timestamp") or db_row.get("update_time") or "")
+                h_match = re.search(r"\s(\d{1,2}):\d{2}", ts_raw) if ts_raw else None
+                if h_match:
+                    h = int(h_match.group(1))
+                    # Validar vagamente que la hora de SQLite encaja en el slot
+                    if (slot == "manana" and 5 <= h < 10) or \
+                       (slot == "mediodia" and 11 <= h < 15) or \
+                       (slot == "tarde" and 17 <= h < 22) or \
+                       (slot == "medianoche" and (h >= 22 or h < 4)):
+                        best = db_row
+                else:
+                    best = db_row
 
         if best and not _is_today(best.get("timestamp")) and not _is_today(best.get("update_time")) and not _is_today(best.get("inserted_at")) and not _is_db_row_from_today(best):
             best = None
