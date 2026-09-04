@@ -440,10 +440,19 @@ def main() -> None:
 
                 results: list[dict[str, Any]] = []
 
+                ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV021"}
+
                 for idx, plant_name in enumerate(plant_names):
+                    if not any(inv in plant_name for inv in ALLOWED_INVERTERS):
+                        log.step(f"Planta {idx+1}/{len(plant_names)}: {plant_name} (Omitida por filtro)")
+                        continue
+
                     log.step(f"Planta {idx+1}/{len(plant_names)}: {plant_name}")
                     try:
                         _select_plant_by_index(page, idx, plant_name)
+                        
+                        # Wait explicitly for the React/Vue frontend to update the data for the newly selected plant
+                        page.wait_for_timeout(3000)
 
                         # Confirmar cambio de planta en el panel (best-effort)
                         try:

@@ -1,5 +1,5 @@
 {
-  "version": "2.15.2",
+  "version": "2.15.3",
   "release_date": "2026-09-03",
-  "notes": "Correccion de duplicacion de datos en horarios incorrectos validando de forma estricta los rangos horarios al llenar los reportes (ej. evitar data de la noche en la tarde)."
+  "notes": "Filtro en el Scraper de Growatt: Ahora ignora completamente las plantas no deseadas para acelerar la descarga y agrega espera obligatoria para evitar mezcla de seriales (ej. Antimano con Monte Cristo)."
 }
