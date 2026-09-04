@@ -77,12 +77,13 @@ def _login_if_needed(page, user: str, password: str) -> None:
     if page.locator("#loginusr > input").is_visible():
         page.locator("#loginusr > input").fill(user)
         page.locator("#mypassword").fill(password)
-        page.locator("#loginbtn").click()
-        try:
-            page.wait_for_load_state("networkidle", timeout=60_000)
-        except Exception:
-            pass
-        page.wait_for_timeout(1500)
+        
+        # Click y esperar a que cambie el estado
+        with page.expect_navigation(timeout=60_000, wait_until="domcontentloaded"):
+            page.locator("#loginbtn").click()
+            
+        # Esperar un tiempo adicional para que el layout de la app cargue
+        page.wait_for_timeout(3000)
 
 
 def _extract_plant(li_id: str, text: str) -> Plant | None:

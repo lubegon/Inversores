@@ -1908,6 +1908,14 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
 
     plants.sort(key=lambda x: (_norm_key(x[0]), _norm_key(x[1])))
 
+    # NUEVO: Filtrar solo los inversores permitidos
+    ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV021"}
+    filtered_plants = []
+    for p_name, t_name in plants:
+        if any(inv in p_name or inv in t_name for inv in ALLOWED_INVERTERS):
+            filtered_plants.append((p_name, t_name))
+    plants = filtered_plants
+
     # Construir headers dinámicos: unión de columnas en orden (normalizando update_time -> Timestamp)
     def _table_cols(table_name: str) -> list[str]:
         try:
@@ -2055,7 +2063,8 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 for ck in (t, plant_name, _derive_plant_name(t), plant_name.split()[0]):
                     if ck:
                         supa_m = growatt_slot_telemetry.get((_norm_key(ck), slot_i))
-                        if supa_m:
+                        # Validar explícitamente que la data pasada pertenece a hoy
+                        if supa_m and (_is_today(supa_m.get("timestamp")) or _is_today(supa_m.get("update_time")) or _is_today(supa_m.get("inserted_at")) or _is_db_row_from_today(supa_m)):
                             prev = supa_m
                             break
             has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("hora"))) if prev else False

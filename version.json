@@ -1,5 +1,5 @@
 {
-  "version": "2.15.0",
-  "release_date": "2026-08-23",
-  "notes": "Mejoras de resiliencia en scraping Growatt, validación anti-archivos vacíos en Supabase, reajuste de rangos de turnos y corrección de variables en reportes."
+  "version": "2.15.1",
+  "release_date": "2026-09-03",
+  "notes": "Filtro estricto de inversores en excel, validacion de fecha para data previa en turnos, y ajuste de etiquetas de horarios."
 }
