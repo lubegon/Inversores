@@ -440,7 +440,7 @@ def main() -> None:
 
                 results: list[dict[str, Any]] = []
 
-                ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV021"}
+                ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV02"}
 
                 for idx, plant_name in enumerate(plant_names):
                     if not any(inv in plant_name for inv in ALLOWED_INVERTERS):

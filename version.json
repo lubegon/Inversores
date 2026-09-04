@@ -1,5 +1,5 @@
 {
-  "version": "2.15.3",
+  "version": "2.15.4",
   "release_date": "2026-09-03",
-  "notes": "Filtro en el Scraper de Growatt: Ahora ignora completamente las plantas no deseadas para acelerar la descarga y agrega espera obligatoria para evitar mezcla de seriales (ej. Antimano con Monte Cristo)."
+  "notes": "Correccion de serial especifico en filtro de inversores Growatt (HUEFBJV02 en lugar de HUEFBJV021)."
 }

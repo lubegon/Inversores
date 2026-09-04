@@ -1909,7 +1909,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
     plants.sort(key=lambda x: (_norm_key(x[0]), _norm_key(x[1])))
 
     # NUEVO: Filtrar solo los inversores permitidos
-    ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV021"}
+    ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV02"}
     filtered_plants = []
     for p_name, t_name in plants:
         if any(inv in p_name or inv in t_name for inv in ALLOWED_INVERTERS):
