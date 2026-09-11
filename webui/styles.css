@@ -105,8 +105,14 @@ code { color: rgba(244, 244, 245, 0.95); }
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px minmax(0, 1fr);
   align-items: start;
+}
+
+.main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 

@@ -765,12 +765,6 @@ def _ensure_grid_data(
             pass
         grid = _find_kendo_grid(page)
 
-    err_msg = page.locator("#invDetailCue, div.faultInfo").first
-    if err_msg.is_visible():
-        text = (err_msg.inner_text() or "").lower()
-        if "no detail data" in text or "no data" in text or "nodata" in text:
-            raise RuntimeError("NO_DATA_TODAY: " + text)
-
     if not grid:
         raise RuntimeError("No se encontró ningún div.k-grid o table visible")
 
@@ -784,13 +778,14 @@ def _ensure_grid_data(
                 if rows_loc.count() > 0 and rows_loc.first.is_visible():
                     break
                 
+                page.wait_for_timeout(350)
                 err_msg = page.locator("#invDetailCue, div.faultInfo").first
                 if err_msg.is_visible():
                     text = (err_msg.inner_text() or "").lower()
                     if "no detail data" in text or "no data" in text or "nodata" in text:
+                        if rows_loc.count() > 0 and rows_loc.first.is_visible():
+                            break
                         raise RuntimeError("NO_DATA_TODAY: " + text)
-                        
-                page.wait_for_timeout(250)
             else:
                 rows_loc.first.wait_for(state="visible", timeout=1000)
 
