@@ -62,10 +62,19 @@ FIREWALL_SAFE_ARGS = [
     "--disable-dev-shm-usage",
     "--no-first-run",
     "--no-zygote",
+    "--ignore-certificate-errors",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
 ]
 
 
+
 def launch_browser(p, *, headless: bool):
+    project_root = Path(__file__).resolve().parents[2]
+    local_browsers = project_root / "playwright_browsers"
+    if local_browsers.exists():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(local_browsers)
+
     choice = browser_choice()
     use_edge = choice in {"edge", "msedge"}
 
@@ -74,9 +83,17 @@ def launch_browser(p, *, headless: bool):
             return p.chromium.launch(headless=headless, channel="msedge", args=FIREWALL_SAFE_ARGS)
         return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
     except PlaywrightError:
-        if use_edge:
-            return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
-        raise
+        # Fallback para PCs con Windows 10 restringidas sin permisos de administrador:
+        # Usar el Microsoft Edge preinstalado en el sistema
+        try:
+            return p.chromium.launch(headless=headless, channel="msedge", args=FIREWALL_SAFE_ARGS)
+        except Exception:
+            try:
+                return p.chromium.launch(headless=headless, channel="chrome", args=FIREWALL_SAFE_ARGS)
+            except Exception:
+                if use_edge:
+                    return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
+                raise
 
 
 def dump_debug(page, run_dir: Path, name: str) -> None:

@@ -61,7 +61,7 @@ def main() -> None:
 
     with sync_playwright() as p:
         browser = launch_browser(p, headless=headless)
-        context = browser.new_context()
+        context = browser.new_context(ignore_https_errors=True)
         page = context.new_page()
         page.set_default_timeout(30_000)
         page.set_default_navigation_timeout(60_000)

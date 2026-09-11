@@ -273,7 +273,11 @@ def _launch_browser(p: Any, *, headless: bool) -> Any:
         "--disable-dev-shm-usage",
         "--no-first-run",
         "--no-zygote",
+        "--ignore-certificate-errors",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
     ]
+
 
     executable_path = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
     if executable_path and Path(executable_path).exists():
@@ -288,7 +292,18 @@ def _launch_browser(p: Any, *, headless: bool) -> Any:
     if local_browsers.exists():
         os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(local_browsers)
 
-    return p.chromium.launch(headless=headless, args=launch_args)
+    try:
+        return p.chromium.launch(headless=headless, args=launch_args)
+    except PlaywrightError:
+        # Fallback para PCs con Windows 10 restringidas sin permisos de administrador:
+        # Usar el Microsoft Edge preinstalado en el sistema
+        try:
+            return p.chromium.launch(headless=headless, channel="msedge", args=launch_args)
+        except Exception:
+            try:
+                return p.chromium.launch(headless=headless, channel="chrome", args=launch_args)
+            except Exception:
+                raise
 
 
 def _dump_debug(page: Page, run_dir: Path, prefix: str) -> None:
@@ -1059,9 +1074,9 @@ def main() -> None:
         with sync_playwright() as p:
             browser = _launch_browser(p, headless=headless)
             if storage_state_path.exists():
-                context = browser.new_context(storage_state=str(storage_state_path))
+                context = browser.new_context(storage_state=str(storage_state_path), ignore_https_errors=True)
             else:
-                context = browser.new_context()
+                context = browser.new_context(ignore_https_errors=True)
 
             page = context.new_page()
             page.set_default_timeout(default_timeout_ms)

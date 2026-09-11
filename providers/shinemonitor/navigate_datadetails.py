@@ -60,10 +60,18 @@ FIREWALL_SAFE_ARGS = [
     "--disable-dev-shm-usage",
     "--no-first-run",
     "--no-zygote",
+    "--ignore-certificate-errors",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
 ]
 
 
 def _launch_browser(p, headless: bool):
+    project_root = Path(__file__).resolve().parents[2]
+    local_browsers = project_root / "playwright_browsers"
+    if local_browsers.exists():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(local_browsers)
+
     choice = _browser_choice()
     use_edge = choice in {"edge", "msedge"}
 
@@ -72,9 +80,16 @@ def _launch_browser(p, headless: bool):
             return p.chromium.launch(headless=headless, channel="msedge", args=FIREWALL_SAFE_ARGS)
         return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
     except PlaywrightError:
-        if use_edge:
-            return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
-        raise
+        try:
+            return p.chromium.launch(headless=headless, channel="msedge", args=FIREWALL_SAFE_ARGS)
+        except Exception:
+            try:
+                return p.chromium.launch(headless=headless, channel="chrome", args=FIREWALL_SAFE_ARGS)
+            except Exception:
+                if use_edge:
+                    return p.chromium.launch(headless=headless, args=FIREWALL_SAFE_ARGS)
+                raise
+
 
 
 def _login_if_needed(page, user: str, password: str) -> None:
@@ -268,9 +283,9 @@ def main() -> None:
     with sync_playwright() as p:
         browser = _launch_browser(p, headless=headless)
         if storage_state_path.exists():
-            context = browser.new_context(storage_state=str(storage_state_path))
+            context = browser.new_context(storage_state=str(storage_state_path), ignore_https_errors=True)
         else:
-            context = browser.new_context()
+            context = browser.new_context(ignore_https_errors=True)
 
         page = context.new_page()
         page.set_default_timeout(30_000)

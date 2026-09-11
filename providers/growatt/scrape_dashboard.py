@@ -406,7 +406,7 @@ def main() -> None:
         with sync_playwright() as p:
             log.step(f"Lanzando browser (headless={headless})")
             browser = launch_browser(p, headless=headless)
-            context = browser.new_context(storage_state=str(storage_state_path))
+            context = browser.new_context(storage_state=str(storage_state_path), ignore_https_errors=True)
             page = context.new_page()
             page.set_default_timeout(30_000)
             page.set_default_navigation_timeout(60_000)

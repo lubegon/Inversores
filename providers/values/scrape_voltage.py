@@ -779,7 +779,7 @@ def main() -> None:
 
     with sync_playwright() as p:
         browser = launch_browser(p, headless=headless)
-        context = browser.new_context(storage_state=str(storage_state_path))
+        context = browser.new_context(storage_state=str(storage_state_path), ignore_https_errors=True)
 
         fast_mode = env_flag("VALUES_FAST", False)
         if fast_mode:
