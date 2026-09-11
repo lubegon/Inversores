@@ -30,3 +30,4 @@ playwright_browsers/
 !python-3.12.3-amd64.exe
 *.msi
 *.bak
+*.rar
