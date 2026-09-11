@@ -167,10 +167,16 @@
 
             <div class="action-bar">
               <div id="report-status-text" class="muted" style="font-size: 0.95rem; height: 20px; font-weight: 500;">Esperando extracción...</div>
-              <button class="btn-huge" id="report-export-pro">
-                <div class="spinner"></div>
-                <span class="btn-text">Descargar Reporte Excel</span>
-              </button>
+              <div style="display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;">
+                <button class="btn-huge" id="report-export-pro">
+                  <div class="spinner"></div>
+                  <span class="btn-text">📊 Descargar Reporte Excel</span>
+                </button>
+                <button class="btn-huge btn-pdf" id="report-export-pdf" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);">
+                  <div class="spinner"></div>
+                  <span class="btn-text">📄 Exportar / Imprimir PDF</span>
+                </button>
+              </div>
             </div>
 
           </section>

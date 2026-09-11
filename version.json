@@ -1,5 +1,5 @@
 {
-  "version": "2.15.4",
-  "release_date": "2026-09-03",
-  "notes": "Correccion de serial especifico en filtro de inversores Growatt (HUEFBJV02 en lugar de HUEFBJV021)."
+  "version": "2.16.0",
+  "release_date": "2026-09-11",
+  "notes": "Restauracion de robustez en scraping Growatt/ShineMonitor/Values y nueva funcionalidad de exportacion e impresion a PDF."
 }

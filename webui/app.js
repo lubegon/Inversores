@@ -1300,6 +1300,16 @@ async function initReports(config) {
     }, 3000);
   });
 
+  const exportPdfBtn = $('#report-export-pdf');
+  exportPdfBtn?.addEventListener('click', () => {
+    const slot = slotSel?.value || 'manana';
+    setStatus('Generando vista de reporte imprimible / PDF...', false);
+    window.open(`/report-view?slot=${encodeURIComponent(slot)}&autoprint=1`, '_blank');
+    setTimeout(() => {
+      setStatus('Reporte PDF generado en nueva pestaña.', false);
+    }, 1500);
+  });
+
   const deleteAllBtn = $('#btn-delete-all-reports');
   deleteAllBtn?.addEventListener('click', async () => {
     if (!confirm('¿Estás seguro de que deseas eliminar permanentemente TODOS los reportes generados en el historial?')) return;

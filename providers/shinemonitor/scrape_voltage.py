@@ -694,6 +694,8 @@ def _get_grid_signature(grid_el: Locator) -> str | None:
 def _find_kendo_grid(page: Page) -> Locator | None:
 
     candidates = [
+        "#invDetailCon table",
+        "#invDetailCon",
         "div.k-grid:has(table.k-printable)",
         "div.k-grid:has(th:has-text('Update Time'))",
         "div.k-grid:has(th:has-text('Voltage'))",
@@ -703,6 +705,7 @@ def _find_kendo_grid(page: Page) -> Locator | None:
         "table.tableStyle:has(th:has-text('Voltage'))",
         "table.tableStyle:has(th:has-text('Voltaje'))",
         "table.tableStyle",
+        "#invDetailCon table tbody",
     ]
 
     for sel in candidates:
@@ -1025,8 +1028,8 @@ def main() -> None:
 
     headless = _env_flag("HEADLESS", True)
 
-    default_timeout_ms = _env_int("SHINE_DEFAULT_TIMEOUT_MS", 15_000)
-    nav_timeout_ms = _env_int("SHINE_NAV_TIMEOUT_MS", 30_000)
+    default_timeout_ms = _env_int("SHINE_DEFAULT_TIMEOUT_MS", 30_000)
+    nav_timeout_ms = _env_int("SHINE_NAV_TIMEOUT_MS", 60_000)
 
     storage_dir = base_dir / "storage"
     storage_dir.mkdir(parents=True, exist_ok=True)
@@ -1069,7 +1072,7 @@ def main() -> None:
 
             try:
                 page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=nav_timeout_ms)
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(2000)
                 _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
 
                 for idx, plant in enumerate(plants, start=1):
@@ -1079,7 +1082,7 @@ def main() -> None:
                     try:
                         _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
 
-                        page.wait_for_timeout(200)
+                        page.wait_for_timeout(1000)
                         plant_name, tree = _select_plant_and_load_tree(
                             page,
                             plant=plant,
@@ -1087,7 +1090,7 @@ def main() -> None:
                             user=user,
                             password=password,
                             storage_state_path=storage_state_path,
-                            timeout_ms=20_000,
+                            timeout_ms=60_000,
                             retries=1,
                         )
 
@@ -1220,10 +1223,40 @@ def main() -> None:
 
                             opened = _click_data_details(
                                 page,
-                                timeout_ms=4_000,
+                                timeout_ms=30_000,
                                 run_dir=run_dir,
                                 debug_name=f"{plant.plant_id}-03-notab-{dev_index+1:02d}",
                             )
+
+                            if not opened:
+                                # Reintento tolerante como en el sistema viejo
+                                try:
+                                    print(f"  [RETRY] Data Details no aparece; reintentando planta/device...", flush=True)
+                                    plant_name_retry, tree_retry = _select_plant_and_load_tree(
+                                        page,
+                                        plant=plant,
+                                        run_dir=run_dir,
+                                        user=user,
+                                        password=password,
+                                        storage_state_path=storage_state_path,
+                                        timeout_ms=60_000,
+                                        retries=1,
+                                    )
+                                    if plant_name_retry:
+                                        plant_name = plant_name_retry
+                                    _, anchors_retry = _collect_inverters_and_device_anchors(tree_retry, plant_id=plant.plant_id)
+                                    if dev_index < len(anchors_retry):
+                                        a_retry = anchors_retry[dev_index]
+                                        a_retry.click(timeout=5_000)
+                                        page.wait_for_timeout(900)
+                                        opened = _click_data_details(
+                                            page,
+                                            timeout_ms=60_000,
+                                            run_dir=run_dir,
+                                            debug_name=f"{plant.plant_id}-03-notab-retry-{dev_index+1:02d}",
+                                        )
+                                except Exception:
+                                    opened = False
 
                             if not opened:
                                 _insert_plant_event(
@@ -1241,8 +1274,8 @@ def main() -> None:
                             try:
                                 grid_el, headers = _ensure_grid_data(
                                     page,
-                                    timeout_ms=3_000,
-                                    attempts=1,
+                                    timeout_ms=20_000,
+                                    attempts=3,
                                     last_signature=None,
                                 )
                                 update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)
@@ -1278,8 +1311,8 @@ def main() -> None:
                                     _click_grid_refresh_button(page)
                                     grid_el, headers = _ensure_grid_data(
                                         page,
-                                        timeout_ms=3_000,
-                                        attempts=1,
+                                        timeout_ms=15_000,
+                                        attempts=2,
                                         last_signature=last_sig,
                                     )
                                     update_time, voltages, raw_data = _extract_grid_data(grid_el, headers)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timedelta, timezone
 import hmac
+import html
 import json
 import os
 import re
@@ -1908,13 +1909,8 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
 
     plants.sort(key=lambda x: (_norm_key(x[0]), _norm_key(x[1])))
 
-    # NUEVO: Filtrar solo los inversores permitidos
-    ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV02"}
-    filtered_plants = []
-    for p_name, t_name in plants:
-        if any(inv in p_name or inv in t_name for inv in ALLOWED_INVERTERS):
-            filtered_plants.append((p_name, t_name))
-    plants = filtered_plants
+    # Mantener todas las plantas e inversores detectados
+
 
     # Construir headers dinámicos: unión de columnas en orden (normalizando update_time -> Timestamp)
     def _table_cols(table_name: str) -> list[str]:
@@ -2472,6 +2468,320 @@ def _ensure_report_reset_thread() -> None:
         return
     _report_reset_thread_started = True
     threading.Thread(target=_report_daily_reset_loop, daemon=True).start()
+
+
+def _render_report_html_view(slot: str = "", autoprint: bool = False) -> str:
+    """Genera una vista HTML profesional optimizada para impresión y descarga a PDF del reporte Excel."""
+    slot = _canonical_slot(slot) or "manana"
+    slot_label = _slot_label_excel(slot) or "Mañana"
+
+    with _report_lock:
+        try:
+            _generate_or_update_report(slot=slot)
+        except Exception:
+            pass
+
+    if not REPORT_PATH.exists():
+        return "<html><body><h2>Reporte no disponible todavía</h2><p>No se encontró el archivo de reporte.</p></body></html>"
+
+    try:
+        wb = openpyxl.load_workbook(REPORT_PATH, data_only=True)
+    except Exception as e:
+        return f"<html><body><h2>Error cargando reporte</h2><p>{e}</p></body></html>"
+
+    now_str = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+
+    sheets_html = []
+    sheet_order = ["Shine Monitor", "Growhatt", "Values"]
+    all_sheets = [s for s in sheet_order if s in wb.sheetnames] + [s for s in wb.sheetnames if s not in sheet_order]
+
+    for sname in all_sheets:
+        ws = wb[sname]
+        if ws.max_row is None or ws.max_row <= 1:
+            continue
+
+        headers = []
+        for c in range(1, ws.max_column + 1):
+            val = ws.cell(1, c).value
+            if val is not None:
+                headers.append((c, str(val).strip()))
+        if not headers:
+            continue
+
+        th_html = "".join(f"<th>{html.escape(h[1])}</th>" for h in headers)
+        thead = f"<thead><tr>{th_html}</tr></thead>"
+
+        tbody_rows = []
+        for r in range(2, ws.max_row + 1):
+            cells_vals = [ws.cell(r, h[0]).value for h in headers]
+            if all(v is None or str(v).strip() == "" for v in cells_vals):
+                continue
+
+            tds = []
+            is_offgrid = False
+            for h in headers:
+                c = h[0]
+                val = ws.cell(r, c).value
+                val_str = "" if val is None else str(val).strip()
+                if "offgrid" in val_str.lower():
+                    is_offgrid = True
+
+                badge = ""
+                if val_str in ("SIN DATOS", "NO_DATA"):
+                    badge = f'<span class="badge-nodata">{html.escape(val_str)}</span>'
+                elif val_str.lower() == "normal":
+                    badge = f'<span class="badge-normal">{html.escape(val_str)}</span>'
+                elif "offgrid" in val_str.lower():
+                    badge = f'<span class="badge-offgrid">{html.escape(val_str)}</span>'
+                else:
+                    badge = html.escape(val_str)
+
+                tds.append(f"<td>{badge}</td>")
+
+            row_cls = "offgrid-row" if is_offgrid else ""
+            tbody_rows.append(f'<tr class="{row_cls}">{"".join(tds)}</tr>')
+
+        tbody = f"<tbody>{''.join(tbody_rows)}</tbody>"
+        table_html = f"""
+        <div class="sheet-section">
+            <div class="sheet-title">📊 {html.escape(sname)}</div>
+            <div class="table-wrapper">
+                <table class="report-table">
+                    {thead}
+                    {tbody}
+                </table>
+            </div>
+        </div>
+        """
+        sheets_html.append(table_html)
+
+    autoprint_script = ""
+    if autoprint:
+        autoprint_script = """
+        <script>
+            window.addEventListener('load', () => {
+                setTimeout(() => { window.print(); }, 700);
+            });
+        </script>
+        """
+
+    full_html = f"""<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reporte Monitores Eléctricos - {slot_label}</title>
+    <link rel="icon" href="/rayo.ico" type="image/x-icon">
+    <style>
+        * {{ box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #0f172a;
+            color: #f1f5f9;
+            margin: 0;
+            padding: 24px;
+            font-size: 11px;
+        }}
+        .no-print {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1e293b;
+            padding: 12px 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }}
+        .no-print h2 {{ margin: 0; font-size: 1rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; }}
+        .btn-group {{ display: flex; gap: 10px; }}
+        .btn {{
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+        }}
+        .btn:hover {{ background: #2563eb; }}
+        .btn-green {{ background: #10b981; }}
+        .btn-green:hover {{ background: #059669; }}
+        .btn-close {{ background: #475569; }}
+        .btn-close:hover {{ background: #334155; }}
+        
+        .header-box {{
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .header-title {{ font-size: 1.25rem; font-weight: 700; color: #f8fafc; letter-spacing: 0.5px; }}
+        .header-meta {{ color: #94a3b8; font-size: 0.85rem; text-align: right; }}
+        .slot-pill {{ background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 4px 10px; border-radius: 20px; font-weight: 600; display: inline-block; margin-top: 4px; }}
+
+        .sheet-section {{
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            margin-bottom: 28px;
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            page-break-after: always;
+        }}
+        .sheet-title {{
+            background: #334155;
+            color: #f8fafc;
+            padding: 12px 18px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            border-bottom: 2px solid #3b82f6;
+        }}
+        .table-wrapper {{
+            width: 100%;
+            overflow-x: auto;
+        }}
+        .report-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.72rem;
+            white-space: nowrap;
+        }}
+        .report-table th {{
+            background: #0f172a;
+            color: #94a3b8;
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: 8px 10px;
+            border: 1px solid #334155;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }}
+        .report-table td {{
+            padding: 6px 10px;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+        }}
+        .report-table tr:nth-child(even) {{ background: rgba(255,255,255,0.02); }}
+        .report-table tr:hover {{ background: rgba(255,255,255,0.05); }}
+        .offgrid-row {{ background: rgba(234, 179, 8, 0.18) !important; }}
+        .badge-nodata {{ color: #94a3b8; font-style: italic; }}
+        .badge-normal {{ color: #10b981; font-weight: 600; }}
+        .badge-offgrid {{ color: #eab308; font-weight: 700; }}
+        .footer-note {{
+            text-align: center;
+            color: #64748b;
+            font-size: 0.75rem;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid #334155;
+        }}
+
+        @media print {{
+            @page {{
+                size: landscape;
+                margin: 8mm;
+            }}
+            body {{
+                background: #fff !important;
+                color: #000 !important;
+                padding: 0 !important;
+                font-size: 8pt !important;
+            }}
+            .no-print {{ display: none !important; }}
+            .header-box {{
+                background: #f8fafc !important;
+                border: 1px solid #ccc !important;
+                color: #000 !important;
+                box-shadow: none !important;
+                margin-bottom: 12px !important;
+                padding: 10px !important;
+            }}
+            .header-title {{ color: #000 !important; font-size: 14pt !important; }}
+            .header-meta {{ color: #333 !important; }}
+            .slot-pill {{
+                background: #e2e8f0 !important;
+                color: #000 !important;
+                border: 1px solid #999 !important;
+            }}
+            .sheet-section {{
+                background: #fff !important;
+                border: 1px solid #999 !important;
+                box-shadow: none !important;
+                margin-bottom: 16px !important;
+                page-break-after: always;
+            }}
+            .sheet-title {{
+                background: #e2e8f0 !important;
+                color: #000 !important;
+                border-bottom: 2px solid #000 !important;
+                font-size: 11pt !important;
+            }}
+            .report-table {{
+                font-size: 6.5pt !important;
+            }}
+            .report-table th {{
+                background: #e2e8f0 !important;
+                color: #000 !important;
+                border: 1px solid #999 !important;
+            }}
+            .report-table td {{
+                border: 1px solid #ccc !important;
+                color: #000 !important;
+            }}
+            .offgrid-row {{
+                background: #fef08a !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }}
+            .footer-note {{
+                color: #555 !important;
+                border-top: 1px solid #ccc !important;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <h2>⚡ Vista de Impresión / Guardar PDF</h2>
+        <div class="btn-group">
+            <button class="btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+            <a href="/api/report/download?slot={slot}" class="btn btn-green">📊 Descargar Excel (.xlsx)</a>
+            <button class="btn btn-close" onclick="window.close()">✕ Cerrar</button>
+        </div>
+    </div>
+
+    <div class="header-box">
+        <div>
+            <div class="header-title">⚡ VOLTGUARD — REPORTE CONSOLIDADO</div>
+            <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 4px;">Sistema de Monitoreo Eléctrico e Inversores</div>
+        </div>
+        <div class="header-meta">
+            <div><strong>Turno:</strong> <span class="slot-pill">{slot_label}</span></div>
+            <div style="margin-top: 6px;">📅 Generado: {now_str}</div>
+        </div>
+    </div>
+
+    {''.join(sheets_html)}
+
+    <div class="footer-note">
+        Programa hecho por Duvelis Huiza y el Lic. Luis G. &copy; {datetime.now().year} Voltguard.
+    </div>
+
+    {autoprint_script}
+</body>
+</html>"""
+    return full_html
 
 
 def _events_file(provider: str) -> Path:
@@ -4533,6 +4843,14 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_file(WEB_DIR / routes[path], content_type="text/html; charset=utf-8")
             return
 
+        if path in ("/report-view", "/api/report/pdf-view", "/api/report/view"):
+            qs = parse_qs(parsed.query)
+            slot = (qs.get("slot") or [""])[0]
+            autoprint = (qs.get("autoprint") or [""])[0] == "1"
+            html_content = _render_report_html_view(slot=slot, autoprint=autoprint)
+            self._send_html(html_content)
+            return
+
         if path == "/" or path == "/index.html":
             self._serve_file(WEB_DIR / "index.html", content_type="text/html; charset=utf-8")
             return
@@ -5184,6 +5502,14 @@ class Handler(BaseHTTPRequestHandler):
         data = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_html(self, content: str) -> None:
+        data = content.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

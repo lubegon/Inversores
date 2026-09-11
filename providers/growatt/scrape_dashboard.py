@@ -415,7 +415,7 @@ def main() -> None:
                 log.step("Abriendo home")
                 if "login" in (home_url or "").lower():
                     home_url = "https://server.growatt.com/index"
-                page.goto(home_url, wait_until="networkidle", timeout=60_000)
+                page.goto(home_url, wait_until="domcontentloaded", timeout=60_000)
 
                 log.step("Esperando selector superior de plantas")
                 try:
@@ -440,21 +440,12 @@ def main() -> None:
 
                 results: list[dict[str, Any]] = []
 
-                ALLOWED_INVERTERS = {"HUEFBJV03H", "TSE7A45046", "HUEFBJV006", "HUEFBJV05N", "TSE7A4504E", "HUEFBJV02"}
-
                 for idx, plant_name in enumerate(plant_names):
-                    if not any(inv in plant_name for inv in ALLOWED_INVERTERS):
-                        log.step(f"Planta {idx+1}/{len(plant_names)}: {plant_name} (Omitida por filtro)")
-                        continue
-
                     log.step(f"Planta {idx+1}/{len(plant_names)}: {plant_name}")
                     try:
                         _select_plant_by_index(page, idx, plant_name)
-                        
-                        # Wait explicitly for the React/Vue frontend to update the data for the newly selected plant
-                        page.wait_for_timeout(3000)
 
-                        # Confirmar cambio de planta en el panel (best-effort)
+                        # Confirmar cambio de planta en el panel
                         try:
                             plant_span = (
                                 page.locator(SEL_TB_DEVICE)
@@ -463,13 +454,26 @@ def main() -> None:
                                 .locator("span")
                                 .first
                             )
-                            plant_span.wait_for(state="attached", timeout=3_000)
+                            plant_span.wait_for(state="attached", timeout=15_000)
+                            # Espera a que el texto contenga el nombre de la planta
+                            page.wait_for_function(
+                                "(el, expected) => (el && (el.innerText||'').toLowerCase().includes(expected.toLowerCase()))",
+                                arg=(plant_span, plant_name),
+                                timeout=20_000,
+                            )
                         except Exception:
                             pass
 
-                        # Esperar panel del dispositivo.
                         try:
-                            page.locator(f"{SEL_PANEL_DEVICE}, {SEL_TB_DEVICE}").first.wait_for(state="attached", timeout=5_000)
+                            page.wait_for_load_state("networkidle", timeout=10_000)
+                        except Exception:
+                            pass
+                        page.wait_for_timeout(800)
+
+                        # Esperar panel del dispositivo
+                        try:
+                            page.locator(SEL_PANEL_DEVICE).wait_for(state="attached", timeout=60_000)
+                            page.locator(SEL_TB_DEVICE).wait_for(state="attached", timeout=60_000)
                         except Exception:
                             pass
 
