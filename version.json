@@ -1,5 +1,5 @@
 {
-  "version": "2.16.4",
+  "version": "2.16.5",
   "release_date": "2026-09-11",
-  "notes": "Correccion de importacion de PlaywrightError en providers/shinemonitor/scrape_voltage.py."
+  "notes": "Actualizacion de memoria del proyecto en AGENTS.md con directrices de Windows 10 no-admin, Edge fallback, bypass SSL y estandares de scraping."
 }
