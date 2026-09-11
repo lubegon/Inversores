@@ -25,6 +25,7 @@ Selectores tabla (opcionales):
 - `VALUES_SEL_HISTORY_CELLS` (default: "td")
 """
 
+# Creado por Luis G.
 from __future__ import annotations
 
 import os

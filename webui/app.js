@@ -25,7 +25,7 @@ function fmtVoltage(v) {
   if (v == null || Number.isNaN(v)) return '—';
   return `${Number(v).toFixed(1)}V`;
 }
-
+// Creado por Luis G.
 function fmtPct(v) {
   if (v == null || Number.isNaN(v)) return '—';
   const n = Math.max(0, Math.min(100, Math.round(Number(v))));

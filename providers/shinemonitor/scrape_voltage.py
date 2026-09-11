@@ -24,6 +24,8 @@ SHINE_URL = "https://shinemonitor.com/index_en.html"
 MAX_ATTEMPTS = 5
 
 
+
+# Creado por Luis G.
 @dataclass(frozen=True)
 class PlantRef:
     plant_id: str

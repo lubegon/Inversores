@@ -1,5 +1,5 @@
 {
-  "version": "2.16.2",
+  "version": "2.16.3",
   "release_date": "2026-09-11",
-  "notes": "Compatibilidad integral con Windows 10 sin permisos de administrador: fallback a Microsoft Edge preinstalado, bypass de inspeccion SSL corporativa (ignore_https_errors), desactivacion de aceleracion GPU y proteccion contra UAC."
+  "notes": "Firma de autoria discreta integrada segun estandares corporativos en archivos clave."
 }

@@ -2808,6 +2808,8 @@ def _append_plant_event(*, provider: str, plant_id: str, outcome: str, ts: float
         return
 
 
+
+# Creado por Luis G.
 def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
     path = _events_file(provider)
     if not path.exists():
