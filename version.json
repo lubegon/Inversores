@@ -1,5 +1,5 @@
 {
-  "version": "2.16.3",
+  "version": "2.16.4",
   "release_date": "2026-09-11",
-  "notes": "Firma de autoria discreta integrada segun estandares corporativos en archivos clave."
+  "notes": "Correccion de importacion de PlaywrightError en providers/shinemonitor/scrape_voltage.py."
 }

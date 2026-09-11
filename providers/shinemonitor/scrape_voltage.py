@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 from typing import Any, Iterable
 
 from dotenv import load_dotenv
-from playwright.sync_api import Locator, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
+from playwright.sync_api import Error as PlaywrightError, Locator, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from providers.supabase_client import save_device, save_plant, save_telemetry_reading, save_plant_event
 
