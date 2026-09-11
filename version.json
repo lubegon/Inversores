@@ -1,5 +1,5 @@
 {
-  "version": "2.16.6",
+  "version": "2.16.7",
   "release_date": "2026-09-11",
-  "notes": "Correccion de desbordamiento horizontal en grid del dashboard (reaparicion de tarjetas ShineMonitor y Values) y temporizacion robusta en lectura de grid ShineMonitor."
+  "notes": "Actualizacion de memoria del proyecto en AGENTS.md: directrices de CSS Grid (prevencion de overflow y alineacion de tarjetas) y tolerancia de espera AJAX en ShineMonitor."
 }

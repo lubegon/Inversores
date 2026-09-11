@@ -61,6 +61,9 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
 3. **Skill de Design System Guardian (Auditoría de Estilos):**
    - Garantizar coherencia CSS/Tailwind y variables corporativas.
    - Simulación y prueba responsive automatizada previa a finalizar componentes.
+4. **Prevención de Desbordamiento en CSS Grid (Layouts WebUI):**
+   - En layouts tipo `.shell` con barra lateral y panel principal (`.main`), la pista flexible del grid DEBE definirse con `minmax(0, 1fr)` en lugar de `1fr` plano, y el contenedor `.main` DEBE incluir `min-width: 0; max-width: 100%; overflow-x: hidden;`.
+   - Esto evita que sub-grids con `repeat(auto-fit, minmax(320px, 1fr))` en `.card-grid` sufran bucles de expansión infinita (a decenas de miles de píxeles) que expulsen tarjetas de proveedores (ShineMonitor, Values) fuera del viewport.
 
 ## Agent Skills: Reglas Híbridas para PC/Android
 
@@ -99,6 +102,7 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
    - Apertura de pestaña *Data Details* con reintentos automáticos.
    - Selectores de tabla robustos incluyendo `#invDetailCon table`.
    - Importar siempre `from playwright.sync_api import Error as PlaywrightError` para el bloque de fallback.
+   - **Tolerancia y Debounce en AJAX**: En `_ensure_grid_data`, evitar comprobaciones instantáneas de `#invDetailCue` o `div.faultInfo` que generen falsos positivos de `NO_DATA_TODAY` ("Sin datos hoy") antes de que la respuesta AJAX pueble las filas de la tabla. Siempre otorgar tiempo de espera y confirmar la ausencia de filas visibles antes de abortar.
 3. **Values (`providers/values/scrape_voltage.py`)**:
    - Mantener `fast_mode = False` por defecto para no bloquear recursos gráficos esenciales para la renderización en headless.
 4. **Reportes y Exportación PDF**:
