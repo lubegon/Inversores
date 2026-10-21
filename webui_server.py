@@ -679,11 +679,11 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
                 if "T" in ts_raw or "Z" in ts_raw or "+" in ts_raw:
                     hour = (hour - 4) % 24
 
-                if 5 <= hour < 10:
+                if 5 <= hour < 12:
                     s_name = "manana"
-                elif 12 <= hour < 15:
+                elif 12 <= hour < 17:
                     s_name = "mediodia"
-                elif 17 <= hour < 22:
+                elif 17 <= hour < 23:
                     s_name = "tarde"
                 else:
                     s_name = "medianoche"
@@ -703,6 +703,8 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
                 p_name = str(m.get("plant_name") or "").strip()
                 d_serial = str(m.get("device_serial") or "").strip()
                 tbl_name = str(r.get("table_name") or m.get("table_name") or "").strip()
+                clean_tbl = tbl_name[2:] if tbl_name.startswith("g_") else tbl_name
+                clean_tbl = re.sub(r"_[0-9a-fA-F]{8}$", "", clean_tbl).replace("_", " ").strip()
                 combo1 = f"{p_name} {d_serial}".strip() if (p_name and d_serial) else ""
                 combo2 = f"{clean_name} {d_serial}".strip() if (clean_name and d_serial) else ""
 
@@ -715,6 +717,7 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
                     p_name,
                     d_serial,
                     tbl_name,
+                    clean_tbl,
                     m.get("plant_id"),
                     m.get("device_name"),
                 ]
@@ -1945,12 +1948,22 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
     def _read_existing() -> dict[tuple[str, str], dict[str, Any]]:
         out: dict[tuple[str, str], dict[str, Any]] = {}
         try:
-            current = []
-            for c in range(1, len(headers) + 1):
+            col_to_hn: dict[int, str] = {}
+            for c in range(1, max(ws.max_column + 1, len(headers) + 1)):
                 v = ws.cell(1, c).value
-                current.append(str(v).strip() if v is not None else "")
-            if [_norm_key(x) for x in current] != [_norm_key(x) for x in headers]:
-                return {}
+                if v is not None:
+                    raw_h = str(v).strip()
+                    hn = _norm_key(raw_h)
+                    if hn in (_norm_key("nodo"), _norm_key("plant_name")):
+                        col_to_hn[c] = _norm_key("plant_name")
+                    elif hn in (_norm_key("hora"), _norm_key("slot")):
+                        col_to_hn[c] = _norm_key("hora")
+                    elif hn in (_norm_key("update_time"), _norm_key("timestamp")):
+                        col_to_hn[c] = _norm_key("timestamp")
+                    elif hn in (_norm_key("connection_status"), _norm_key("status")):
+                        col_to_hn[c] = _norm_key("connection_status")
+                    else:
+                        col_to_hn[c] = hn
 
             last_plant = ""
             for r in range(2, ws.max_row + 1):
@@ -1965,10 +1978,12 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                     continue
                 key = (_norm_key(last_plant), s)
                 rowd: dict[str, Any] = {}
-                for c in range(1, len(headers) + 1):
-                    hn = _norm_key(headers[c - 1])
-                    rowd[hn] = ws.cell(r, c).value
-                out[key] = rowd
+                for c, hn in col_to_hn.items():
+                    val = ws.cell(r, c).value
+                    if val is not None:
+                        rowd[hn] = val
+                if rowd:
+                    out[key] = rowd
         except Exception:
             return {}
         return out
@@ -2095,28 +2110,35 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 target_r = row + i
                 break
 
-        # Buscar en Supabase primero, pero STRICTAMENTE para el slot solicitado
-        # (Esto evita que una lectura de Medianoche se duplique en Tarde si no hay datos nuevos)
-        supa_target = (
-            growatt_slot_telemetry.get((_norm_key(t), slot))
-            or growatt_slot_telemetry.get((_norm_key(plant_name), slot))
-            or growatt_slot_telemetry.get((_norm_key(_derive_plant_name(t)), slot))
-        )
+        # Buscar en Supabase primero, cubriendo tabla, planta, serial y nombre limpio
+        serial_m = re.search(r"([A-Z0-9]{8,15})", t) or re.search(r"([A-Z0-9]{8,15})", plant_name)
+        dev_serial_cand = serial_m.group(1) if serial_m else ""
+        supa_cands = [t, plant_name, _derive_plant_name(t)]
+        if dev_serial_cand:
+            supa_cands.append(dev_serial_cand)
+
+        supa_target = None
+        for sc in supa_cands:
+            cand_res = growatt_slot_telemetry.get((_norm_key(sc), slot))
+            if cand_res:
+                supa_target = cand_res
+                break
+
         if supa_target and (_is_today(supa_target.get("timestamp")) or _is_today(supa_target.get("update_time")) or _is_today(supa_target.get("inserted_at")) or _is_db_row_from_today(supa_target)):
             best = supa_target
         else:
             best = None
             db_row = _latest_row(t)
-            if db_row is not None and (_is_today(db_row.get("timestamp")) or _is_today(db_row.get("update_time")) or _is_db_row_from_today(db_row)):
-                ts_raw = str(db_row.get("timestamp") or db_row.get("update_time") or "")
+            if db_row is not None and (_is_today(db_row.get("timestamp")) or _is_today(db_row.get("update_time")) or _is_today(db_row.get("inserted_at")) or _is_db_row_from_today(db_row)):
+                ts_raw = str(db_row.get("timestamp") or db_row.get("update_time") or db_row.get("inserted_at") or "")
                 h_match = re.search(r"\s(\d{1,2}):\d{2}", ts_raw) if ts_raw else None
                 if h_match:
                     h = int(h_match.group(1))
-                    # Validar vagamente que la hora de SQLite encaja en el slot
-                    if (slot == "manana" and 5 <= h < 10) or \
-                       (slot == "mediodia" and 11 <= h < 15) or \
-                       (slot == "tarde" and 17 <= h < 22) or \
-                       (slot == "medianoche" and (h >= 22 or h < 4)):
+                    # Franjas horarias continuas sin huecos
+                    if (slot == "manana" and 5 <= h < 12) or \
+                       (slot == "mediodia" and 12 <= h < 17) or \
+                       (slot == "tarde" and 17 <= h < 23) or \
+                       (slot == "medianoche" and (h >= 23 or h < 5)):
                         best = db_row
                 else:
                     best = db_row
@@ -2787,7 +2809,7 @@ def _render_report_html_view(slot: str = "", autoprint: bool = False) -> str:
 def _events_file(provider: str) -> Path:
     return STORAGE_DIR / f"plant-events-{provider}.jsonl"
 
-
+# Creado por Luis G.
 def _append_plant_event(*, provider: str, plant_id: str, outcome: str, ts: float) -> None:
     """Guarda un evento por planta para graficar Plantas/Hora.
 
@@ -2808,8 +2830,6 @@ def _append_plant_event(*, provider: str, plant_id: str, outcome: str, ts: float
         return
 
 
-
-# Creado por Luis G.
 def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
     path = _events_file(provider)
     if not path.exists():

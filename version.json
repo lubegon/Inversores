@@ -1,5 +1,5 @@
 {
-  "version": "2.16.7",
-  "release_date": "2026-09-11",
-  "notes": "Actualizacion de memoria del proyecto en AGENTS.md: directrices de CSS Grid (prevencion de overflow y alineacion de tarjetas) y tolerancia de espera AJAX en ShineMonitor."
+  "version": "2.17.0",
+  "release_date": "2026-10-21",
+  "notes": "Actualizacion de clave ShineMonitor a MUST_Gris102026, correccion de descarga a Excel para Growatt (franjas horarias 24h sin huecos y mapeo de serial/tabla), y optimizacion de velocidad de scraping sin networkidle."
 }

@@ -411,6 +411,10 @@ def main() -> None:
             page = context.new_page()
             page.set_default_timeout(30_000)
             page.set_default_navigation_timeout(60_000)
+            try:
+                page.route("**/*.{png,jpg,jpeg,gif,webp,ico,woff,woff2,ttf,eot}", lambda route: route.abort())
+            except Exception:
+                pass
 
             try:
                 log.step("Abriendo home")
@@ -465,11 +469,7 @@ def main() -> None:
                         except Exception:
                             pass
 
-                        try:
-                            page.wait_for_load_state("networkidle", timeout=10_000)
-                        except Exception:
-                            pass
-                        page.wait_for_timeout(800)
+                        page.wait_for_timeout(500)
 
                         # Esperar panel del dispositivo
                         try:
