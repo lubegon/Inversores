@@ -108,6 +108,28 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
 4. **Reportes y Exportación PDF**:
    - Para generar reportes PDF en PCs sin derechos de administrador, utilizar la vista web `/report-view` con estilos `@media print` apaisados y `window.print()`, permitiendo exportar mediante "Microsoft Print to PDF" o el motor nativo de Edge sin necesidad de instalar drivers virtuales.
 
+## Arquitectura de Flujo Desacoplado (Diagrama Operativo)
+- **Scraping Completo Aislado (Sin Bloqueos de Red):**
+  - El scraping de todos los inversores y proveedores (Growatt, ShineMonitor, Values) debe completarse en su totalidad a nivel local y en memoria/SQLite ANTES de cualquier sincronización remota con Supabase.
+  - Prohibido hacer peticiones HTTP hacia Supabase entre un inversor y otro durante el ciclo de captura.
+- **Guardado Local Inmediato:**
+  - Al culminar la recolección, se actualiza de inmediato el archivo Excel local y la base de datos SQLite local para que el operador cuente con sus datos sin demoras.
+- **Subida Masiva por Lotes (Batch) a Supabase:**
+  - La sincronización hacia Supabase (`telemetry_readings`) se realiza en un lote consolidado (`batch_save_telemetry_readings`) en segundo plano o post-ciclo, minimizando el número de transacciones HTTP y el tiempo total de ejecución.
+
+## Reglas del Generador de Reportes Excel
+1. **Growatt (Columna Nodo):**
+   - El nombre de la planta debe asignarse de forma obligatoria en la columna 1 (`ws.cell(min_r, 1).value = plant_name`) y combinarse verticalmente en las 4 filas del turno (`ws.merge_cells(start_row=min_r, end_row=max_r, start_column=1, end_column=1)`) con formato centrado y negrita, garantizando que los inversores nunca queden con la celda vacía o invisible.
+2. **Anti-Duplicación Horaria Estricta:**
+   - Todo dato asignado a un turno (`Medianoche`, `Mañana`, `Mediodía`, `Tarde`) en cualquier proveedor debe validarse contra su franja horaria (`_slot_for_timestamp`):
+     - `05:00 - 11:59` -> Mañana
+     - `12:00 - 16:59` -> Mediodía
+     - `17:00 - 22:59` -> Tarde
+     - `23:00 - 04:59` -> Medianoche
+   - Si una lectura previa o capturada pertenece a un turno distinto (ej. lectura de la mañana apareciendo en la fila de la tarde), se descarta y se restablece a `SIN DATOS` para evitar falsos positivos de duplicación.
+3. **Compatibilidad con Python 3.10:**
+   - El sistema portable está estandarizado para Python 3.10. No utilizar funciones, sintaxis o tipados exclusivos de Python 3.12 para asegurar la compatibilidad con todas las PCs operativas.
+
 ## Marca de Autoría Discreta (Skill Firma)
 - En archivos clave modificados, incluir el comentario discreto `"Creado por Luis G."` según la jerarquía:
   - **Línea 2812**: Archivos de >= 2812 líneas (ej. `webui_server.py`).
@@ -118,4 +140,5 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
 ## Ejecución Autónoma y Prioridad de Agent Skills / MCP
 - **Prioridad de Acción Inmediata:** Los Agent Skills y servidores MCP configurados (`visual-translation`, `visual-inspector`, `design-system-guardian`, `android-dev-automation`, `desktop-e2e-automation`) **DEBEN ser los primeros en actuar de manera autónoma**.
 - **Sin Espera ni Confirmación:** El agente debe activar y ejecutar estos skills o herramientas MCP de forma inmediata al detectar tareas de diseño, maquetación, inspección visual, pruebas en Android (ADB) o testing E2E en PC, **sin preguntar previa o explícitamente al usuario ni esperar instrucciones adicionales**.
+
 
