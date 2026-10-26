@@ -24,6 +24,7 @@ logger = logging.getLogger("supabase_client")
 
 def _get_hostname() -> str:
     try:
+        # Creado por Luis G.
         return socket.gethostname()
     except Exception:
         return os.getenv("COMPUTERNAME") or os.getenv("HOSTNAME") or "Desconocida"
@@ -314,6 +315,66 @@ class SupabaseManager:
             log_supabase_activity("insert_telemetry", "error", f"Dispositivo {device_key}: {exc}", provider)
             return False
 
+    def save_telemetry_readings_batch(
+        self,
+        readings: list[dict[str, Any]],
+        chunk_size: int = 50,
+    ) -> int:
+        """Guarda un lote de lecturas telemétricas en Supabase en peticiones HTTP masivas de alta velocidad."""
+        if not self.is_enabled() or not readings:
+            return 0
+        hostname = _get_hostname()
+        version = _get_version()
+        client_ip = _get_client_ip()
+
+        prepared: list[dict[str, Any]] = []
+        for r in readings:
+            m = dict(r.get("metrics") or {})
+            if "client_host" not in m:
+                m["client_host"] = hostname
+            if "client_version" not in m:
+                m["client_version"] = version
+            if "client_ip" not in m:
+                m["client_ip"] = client_ip
+            plant_id = r.get("plant_id")
+            if plant_id and "plant_id" not in m:
+                m["plant_id"] = str(plant_id)
+
+            payload = {
+                "provider": r.get("provider", "unknown"),
+                "device_key": str(r.get("device_key", "")),
+                "update_time": r.get("update_time", "") or "",
+                "status": r.get("status", "") or "",
+                "metrics": m,
+            }
+            if r.get("inserted_at"):
+                payload["inserted_at"] = r["inserted_at"]
+            prepared.append(payload)
+
+        total_inserted = 0
+        for i in range(0, len(prepared), chunk_size):
+            chunk = prepared[i : i + chunk_size]
+            try:
+                self.client.table("telemetry_readings").insert(chunk).execute()
+                total_inserted += len(chunk)
+                log_supabase_activity(
+                    "insert_telemetry_batch",
+                    "success",
+                    f"Lote de {len(chunk)} lecturas enviado",
+                    chunk[0]["provider"] if chunk else "unknown",
+                )
+            except Exception as exc:
+                logger.error(f"[Supabase] Error en inserción masiva ({len(chunk)} elementos): {exc}")
+                log_supabase_activity("insert_telemetry_batch", "error", f"Error lote {len(chunk)}: {exc}", "unknown")
+                # Fallback: intentar uno por uno si el lote fue rechazado
+                for single in chunk:
+                    try:
+                        self.client.table("telemetry_readings").insert(single).execute()
+                        total_inserted += 1
+                    except Exception:
+                        pass
+        return total_inserted
+
     def save_plant_event(
         self,
         provider: str,
@@ -509,6 +570,10 @@ def save_device(*args, **kwargs) -> bool:
 
 def save_telemetry_reading(*args, **kwargs) -> bool:
     return SupabaseManager.get_instance().save_telemetry_reading(*args, **kwargs)
+
+
+def save_telemetry_readings_batch(*args, **kwargs) -> int:
+    return SupabaseManager.get_instance().save_telemetry_readings_batch(*args, **kwargs)
 
 
 def save_plant_event(*args, **kwargs) -> bool:

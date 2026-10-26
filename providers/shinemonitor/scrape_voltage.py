@@ -16,7 +16,7 @@ from typing import Any, Iterable
 from dotenv import load_dotenv
 from playwright.sync_api import Error as PlaywrightError, Locator, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
-from providers.supabase_client import save_device, save_plant, save_telemetry_reading, save_plant_event
+from providers.supabase_client import save_device, save_plant, save_telemetry_reading, save_plant_event, save_telemetry_readings_batch
 
 _SYNC_QUEUE: list[dict[str, Any]] = []
 
@@ -1352,9 +1352,6 @@ def main() -> None:
                         except Exception as dev_err:
                             print(f"  [WARN] Error procesando dispositivo {dev_index+1}: {dev_err}", flush=True)
 
-                _process_sync_queue()
-                _update_sync_status("shinemonitor", idx + 1, len(plants), "syncing")
-
                 page.wait_for_timeout(200)
 
             except Exception as e:
@@ -1414,10 +1411,9 @@ def _process_sync_queue() -> None:
         except Exception:
             pass
 
+    telemetry_items: list[dict[str, Any]] = []
+
     for i, item in enumerate(_SYNC_QUEUE):
-        if i % 10 == 0:
-            _update_status(i)
-            
         try:
             t = item["type"]
             if t == "plant":
@@ -1444,18 +1440,16 @@ def _process_sync_queue() -> None:
                     inserted_at=item["inserted_at"],
                 )
             elif t == "telemetry":
-                save_telemetry_reading(
-                    device_key=item["device_key"],
-                    plant_id=item["plant_id"],
-                    provider=item["provider"],
-                    update_time=item["update_time"],
-                    status=item["status"],
-                    metrics=item["metrics"],
-                    raw_data=item["raw_data"],
-                    inserted_at=item["inserted_at"],
-                )
+                telemetry_items.append(item)
         except Exception as e:
-            print(f"Error subiendo a Supabase: {e}", flush=True)
+            print(f"Error procesando metadata en Supabase: {e}", flush=True)
+
+    if telemetry_items:
+        try:
+            inserted = save_telemetry_readings_batch(telemetry_items)
+            print(f"[OK] Sincronización masiva Supabase completada ({inserted} lecturas)", flush=True)
+        except Exception as e:
+            print(f"Error subiendo lote telemétrico a Supabase: {e}", flush=True)
 
     _update_status(total)
     try:

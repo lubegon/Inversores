@@ -35,7 +35,7 @@ from playwright.sync_api import sync_playwright
 
 from .common import RunLogger, dump_debug, env_flag, launch_browser
 from .voltage_sqlite import GrowattRow, connect_db, ensure_monitor_table, insert_monitor_row, monitor_table_name
-from providers.supabase_client import save_device, save_plant, save_telemetry_reading
+from providers.supabase_client import save_device, save_plant, save_telemetry_reading, save_telemetry_readings_batch
 
 DEFAULT_HOME_URL = "https://server.growatt.com/"
 
@@ -456,6 +456,9 @@ def main() -> None:
                 log.ok(f"Plantas detectadas: {len(plant_names)}")
 
                 results: list[dict[str, Any]] = []
+                pending_supabase_plants: list[dict[str, Any]] = []
+                pending_supabase_devices: list[dict[str, Any]] = []
+                pending_supabase_telemetry: list[dict[str, Any]] = []
 
                 for idx, plant_name in enumerate(plant_names):
                     log.step(f"Planta {idx+1}/{len(plant_names)}: {plant_name}")
@@ -519,57 +522,51 @@ def main() -> None:
                         conn.commit()
                         log.ok(f"Planta {idx+1}/{len(plant_names)}: SQLite insertado en {table_name}")
 
-                        # Sincronización remota con Supabase PostgreSQL
-                        try:
-                            dev_key = device_serial or table_name
-                            save_plant(
-                                provider="growatt",
-                                plant_id=str(idx + 1),
-                                name=plant_name,
-                                metadata={"table_name": table_name, "device_serial": device_serial},
-                            )
-                            save_device(
-                                provider="growatt",
-                                plant_id=str(idx + 1),
-                                device_key=dev_key,
-                                device_name=monitor_name,
-                                device_type="Inverter",
-                                metadata={"table_name": table_name},
-                            )
-                            telemetry_metrics = {
-                                "battery_voltage": row.battery_voltage,
-                                "pv1_pv2_voltage": row.pv1_pv2_voltage,
-                                "pv1_pv2_recharging_current": row.pv1_pv2_recharging_current,
-                                "total_charge_current": row.total_charge_current,
-                                "ac_input_voltage_frequency": row.ac_input_voltage_frequency,
-                                "ac_output_voltage_frequency": row.ac_output_voltage_frequency,
-                                "table_name": table_name,
-                                "plant_name": plant_name,
-                                "device_name": monitor_name,
-                                "device_serial": device_serial,
-                                "Battery Voltage": row.battery_voltage,
-                                "PV1/PV2 Voltage": row.pv1_pv2_voltage,
-                                "PV1/PV2 Recharging Current": row.pv1_pv2_recharging_current,
-                                "Total Charge Current": row.total_charge_current,
-                                "AC Input Voltage/Frequency": row.ac_input_voltage_frequency,
-                                "AC Output Voltage/Frequency": row.ac_output_voltage_frequency,
-                            }
-                            if isinstance(metrics, dict):
-                                telemetry_metrics.update(metrics)
+                        # Acumular registros para subida remota a Supabase al finalizar todo el scraping
+                        dev_key = device_serial or table_name
+                        pending_supabase_plants.append({
+                            "provider": "growatt",
+                            "plant_id": str(idx + 1),
+                            "name": plant_name,
+                            "metadata": {"table_name": table_name, "device_serial": device_serial},
+                        })
+                        pending_supabase_devices.append({
+                            "provider": "growatt",
+                            "plant_id": str(idx + 1),
+                            "device_key": dev_key,
+                            "device_name": monitor_name,
+                            "device_type": "Inverter",
+                            "metadata": {"table_name": table_name},
+                        })
+                        telemetry_metrics = {
+                            "battery_voltage": row.battery_voltage,
+                            "pv1_pv2_voltage": row.pv1_pv2_voltage,
+                            "pv1_pv2_recharging_current": row.pv1_pv2_recharging_current,
+                            "total_charge_current": row.total_charge_current,
+                            "ac_input_voltage_frequency": row.ac_input_voltage_frequency,
+                            "ac_output_voltage_frequency": row.ac_output_voltage_frequency,
+                            "table_name": table_name,
+                            "plant_name": plant_name,
+                            "device_name": monitor_name,
+                            "device_serial": device_serial,
+                            "Battery Voltage": row.battery_voltage,
+                            "PV1/PV2 Voltage": row.pv1_pv2_voltage,
+                            "PV1/PV2 Recharging Current": row.pv1_pv2_recharging_current,
+                            "Total Charge Current": row.total_charge_current,
+                            "AC Input Voltage/Frequency": row.ac_input_voltage_frequency,
+                            "AC Output Voltage/Frequency": row.ac_output_voltage_frequency,
+                        }
+                        if isinstance(metrics, dict):
+                            telemetry_metrics.update(metrics)
 
-                            save_telemetry_reading(
-                                provider="growatt",
-                                device_key=dev_key,
-                                update_time=update_time or _utc_now_iso(),
-                                status=conn_status or "Online",
-                                metrics=telemetry_metrics,
-                                plant_id=str(idx + 1),
-                            )
-                        except Exception as supa_err:
-                            log.warn(f"Supabase sync warning (Planta {plant_name}): {supa_err}")
-
-                        # Actualizar estado de subida en tiempo real para las barras de la WebUI
-                        _update_sync_status("growatt", idx + 1, len(plant_names), "syncing", base_dir)
+                        pending_supabase_telemetry.append({
+                            "provider": "growatt",
+                            "device_key": dev_key,
+                            "update_time": update_time or _utc_now_iso(),
+                            "status": conn_status or "Online",
+                            "metrics": telemetry_metrics,
+                            "plant_id": str(idx + 1),
+                        })
 
                         try:
                             from providers.system_logger import log_sys_event
@@ -613,10 +610,10 @@ def main() -> None:
                     "results": results,
                 }
                 _write_json(out_json, payload)
-                log.ok(f"Guardado: {out_json}")
-                _update_sync_status("growatt", len(plant_names), len(plant_names), "completed", base_dir)
+                log.ok(f"Guardado local: {out_json}")
 
-                # Diagrama de flujo: Guarda local -> Envía copia (Supabase) + Excel
+                # Diagrama de flujo: Finalizado todo el scraping y guardado local
+                # -> Bifurcación: 1) Reporte Excel Local  2) Envío a Supabase (Batch rápido)
                 try:
                     from webui_server import _generate_or_update_report, _current_slot
                     curr_slot = _current_slot()
@@ -625,6 +622,21 @@ def main() -> None:
                         log.ok(f"Reporte Excel local actualizado automáticamente para el turno: {curr_slot}")
                 except Exception as ex:
                     log.warn(f"Aviso actualizando reporte Excel local: {ex}")
+
+                # Envío de copia a Supabase en bloque de alta velocidad
+                if pending_supabase_telemetry or pending_supabase_plants:
+                    try:
+                        log.step("Iniciando sincronización masiva con Supabase...")
+                        for p in pending_supabase_plants:
+                            save_plant(**p)
+                        for d in pending_supabase_devices:
+                            save_device(**d)
+                        if pending_supabase_telemetry:
+                            inserted = save_telemetry_readings_batch(pending_supabase_telemetry)
+                            log.ok(f"Sincronización Supabase completada ({inserted} lecturas)")
+                        _update_sync_status("growatt", len(plant_names), len(plant_names), "completed", base_dir)
+                    except Exception as supa_err:
+                        log.warn(f"Aviso en sincronización Supabase: {supa_err}")
             except Exception as e:
                 try:
                     dump_debug(page, base_dir, "growatt-dashboard-exception")

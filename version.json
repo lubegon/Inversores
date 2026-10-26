@@ -1,5 +1,5 @@
 {
-  "version": "2.18.1",
+  "version": "2.19.0",
   "release_date": "2026-10-25",
-  "notes": "Correccion de terminaciones de linea Windows CRLF en scripts por lotes (.bat/.cmd) para evitar errores de sintaxis en el interprete cmd.exe ('se no se reconoce como comando')."
+  "notes": "Optimizacion de flujo segun diagrama: finalizacion total del ciclo de scraping y guardado local sin llamadas HTTP intermedias, seguido de actualizacion inmediata de copia Excel y subida masiva ultrarrapida por lotes (batch) a Supabase."
 }

@@ -36,8 +36,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
+from typing import Any
+
+_PENDING_VALUES_TELEMETRY: list[dict[str, Any]] = []
 
 from .common import (
     MonitorRef,
@@ -682,20 +684,15 @@ def _insert_row(
         f"INSERT INTO {table_name} ({sql_cols}) VALUES ({placeholders})",
         params,
     )
-    try:
-        from providers.supabase_client import get_supabase
-        sb = get_supabase()
-        if sb.is_enabled():
-            sb.save_telemetry_reading(
-                provider="values",
-                device_key=table_name,
-                update_time=row_timestamp or "",
-                status="Normal",
-                metrics=values_by_header,
-                inserted_at=captured_at,
-            )
-    except Exception:
-        pass
+    # Acumular para sincronización remota con Supabase al finalizar todo el scraping
+    _PENDING_VALUES_TELEMETRY.append({
+        "provider": "values",
+        "device_key": table_name,
+        "update_time": row_timestamp or "",
+        "status": "Normal",
+        "metrics": values_by_header,
+        "inserted_at": captured_at,
+    })
 
 
 def main() -> None:
@@ -1175,7 +1172,8 @@ def main() -> None:
             browser.close()
             conn.close()
 
-    # Diagrama de flujo: Guarda local -> Envía copia (Supabase) + Excel
+    # Diagrama de flujo: Finalizado todo el scraping y guardado local
+    # -> Bifurcación: 1) Reporte Excel Local  2) Envío a Supabase (Batch rápido)
     try:
         from webui_server import _generate_or_update_report, _current_slot
         curr_slot = _current_slot()
@@ -1184,6 +1182,16 @@ def main() -> None:
             print(f"[OK] Reporte Excel actualizado automáticamente para el turno: {curr_slot}", flush=True)
     except Exception as ex:
         print(f"[INFO] Aviso actualizando reporte Excel local: {ex}", flush=True)
+
+    # Envío de copia a Supabase en bloque de alta velocidad
+    if _PENDING_VALUES_TELEMETRY:
+        try:
+            from providers.supabase_client import save_telemetry_readings_batch
+            inserted = save_telemetry_readings_batch(_PENDING_VALUES_TELEMETRY)
+            print(f"[OK] Sincronización masiva Supabase completada ({inserted} lecturas)", flush=True)
+        except Exception as ex:
+            print(f"[WARN] Error en sincronización masiva Supabase: {ex}", flush=True)
+        _PENDING_VALUES_TELEMETRY.clear()
 
     print("OK")
 
