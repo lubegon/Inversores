@@ -149,7 +149,13 @@ def perform_auto_update(remote_ver: str, quiet: bool = False) -> bool:
                 src_file = Path(root) / file
                 dst_file = target_dir / file
                 try:
-                    shutil.copy2(src_file, dst_file)
+                    if file.lower().endswith((".bat", ".cmd")):
+                        with open(src_file, "rb") as sf:
+                            bat_data = sf.read().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+                        with open(dst_file, "wb") as df:
+                            df.write(bat_data)
+                    else:
+                        shutil.copy2(src_file, dst_file)
                     copied_count += 1
                 except Exception as copy_err:
                     logger.warning(f"[AutoUpdate] No se pudo copiar {file}: {copy_err}")

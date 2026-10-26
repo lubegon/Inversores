@@ -1,5 +1,5 @@
 {
-  "version": "2.18.0",
+  "version": "2.18.1",
   "release_date": "2026-10-25",
-  "notes": "Sincronizacion de flujo segun diagrama de proceso: generacion automatica de Excel local y respaldo en Supabase post-scraping, correccion de extraccion y formateo de datos en pestana Growatt sin purgar nodos esenciales, y deteccion dinamica prioritaria de Python 3.10 sin forzar 3.12."
+  "notes": "Correccion de terminaciones de linea Windows CRLF en scripts por lotes (.bat/.cmd) para evitar errores de sintaxis en el interprete cmd.exe ('se no se reconoce como comando')."
 }

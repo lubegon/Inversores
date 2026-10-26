@@ -1,0 +1,3 @@
+# Forzar terminaciones de linea Windows CRLF en scripts de procesamiento por lotes para compatibilidad con cmd.exe
+*.bat text eol=crlf
+*.cmd text eol=crlf
