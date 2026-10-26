@@ -1,5 +1,5 @@
 {
-  "version": "2.17.0",
-  "release_date": "2026-10-21",
-  "notes": "Actualizacion de clave ShineMonitor a MUST_Gris102026, correccion de descarga a Excel para Growatt (franjas horarias 24h sin huecos y mapeo de serial/tabla), y optimizacion de velocidad de scraping sin networkidle."
+  "version": "2.18.0",
+  "release_date": "2026-10-25",
+  "notes": "Sincronizacion de flujo segun diagrama de proceso: generacion automatica de Excel local y respaldo en Supabase post-scraping, correccion de extraccion y formateo de datos en pestana Growatt sin purgar nodos esenciales, y deteccion dinamica prioritaria de Python 3.10 sin forzar 3.12."
 }

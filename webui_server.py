@@ -15,6 +15,7 @@ import threading
 import time
 import sys
 import unicodedata
+from collections import defaultdict
 from dataclasses import dataclass
 from dataclasses import field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -180,6 +181,23 @@ def _canonical_slot(slot: str) -> str:
     if s in ("tarde", "afternoon"):
         return "tarde"
     return ""
+
+
+def _current_slot() -> str:
+    now_local = datetime.now()
+    try:
+        from zoneinfo import ZoneInfo
+        now_local = datetime.now(ZoneInfo("America/Caracas"))
+    except Exception:
+        pass
+    h = now_local.hour
+    if 5 <= h < 12:
+        return "manana"
+    elif 12 <= h < 17:
+        return "mediodia"
+    elif 17 <= h < 23:
+        return "tarde"
+    return "medianoche"
 
 
 def _is_today(val: Any) -> bool:
@@ -1826,378 +1844,215 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
         row += 1
 
 
+def _match_growatt_plant_to_table(plant_name: str, tables: list[str]) -> str | None:
+    norm_p = _norm_key(plant_name)
+    best_t = None
+    best_score = 0
+    stop_words = {"nodo", "respaldo", "1er", "2do", "respald"}
+    keywords = [w for w in norm_p.split() if len(w) >= 3 and w not in stop_words]
+    for t in tables:
+        norm_t = _norm_key(t.replace("g_", "").replace("_", " "))
+        score = sum(len(kw) for kw in keywords if kw in norm_t)
+        if score > best_score:
+            best_score = score
+            best_t = t
+    return best_t if best_score > 0 else None
+
+
 def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None, slot: str) -> None:
-    """Genera/actualiza la hoja Growhatt desde la BD de Growatt o Supabase."""
+    """Genera/actualiza la hoja Growhatt desde la BD de Growatt, cache local o Supabase."""
 
     slot = _canonical_slot(slot)
     slot_label = _slot_label_excel(slot)
     if not slot or not slot_label:
         return
 
-    hour_labels = ["Media Noche", "Mañana", "Medio Dia", "Tarde"]
+    slot_order = ["medianoche", "manana", "mediodia", "tarde"]
+    target_idx = slot_order.index(slot) if slot in slot_order else 1
 
-    def _growatt_tables() -> list[str]:
-        try:
-            return [t for t in _sqlite_tables(conn_growatt) if t.startswith("g_")] if conn_growatt else []
-        except Exception:
-            return []
+    headers = [
+        "Nodo", "Hora", "Update Time", "Connection Status", "Battery Voltage",
+        "PV1/PV2 Voltage", "PV1/PV2 Recharging Current", "Total Charge Current",
+        "AC Input Voltage/Frequency", "AC output Voltage Frequency"
+    ]
 
-    tables = _growatt_tables()
-    tables.sort(key=lambda t: _norm_key(t))
+    # Identificar bloques de plantas en la hoja existente
+    blocks: list[tuple[str, int, dict[str, int]]] = []
+    curr_plant = ""
+    curr_plant_cell_row = 0
+    slot_rows: dict[str, int] = {}
 
-    # Mapeo opcional tabla -> nombre amigable desde growatt-plants.json (si existe)
-    name_by_table: dict[str, str] = {}
-    try:
-        path = STORAGE_DIR / "growatt-plants.json"
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8", errors="ignore") or "{}")
-            plants = data.get("dropdown_plants") or []
-            growatt_map = _load_growatt_name_to_table()
-            if isinstance(plants, list):
-                for p in plants:
-                    try:
-                        name = str((p or {}).get("name") or "").strip()
-                    except Exception:
-                        name = ""
-                    if not name:
-                        continue
-                    t = growatt_map.get(_norm_key(name))
-                    if t:
-                        name_by_table[str(t)] = name
-    except Exception:
-        name_by_table = {}
+    for r in range(2, ws.max_row + 1):
+        c1 = ws.cell(r, 1).value
+        c2 = ws.cell(r, 2).value
+        c1_str = str(c1).strip() if c1 is not None else ""
+        c2_str = str(c2).strip() if c2 is not None else ""
+        if c1_str and _norm_key(c1_str) not in (_norm_key("nodo"), _norm_key("hora"), _norm_key("none")):
+            if curr_plant:
+                blocks.append((curr_plant, curr_plant_cell_row, slot_rows))
+            curr_plant = c1_str
+            curr_plant_cell_row = r
+            slot_rows = {}
+        cs = _canonical_slot(c2_str)
+        if cs:
+            slot_rows[cs] = r
 
-    def _derive_plant_name(t: str) -> str:
-        s = str(t or "").strip()
-        if s.startswith("g_"):
-            s = s[2:]
-        parts = s.split("_")
-        if parts and re.fullmatch(r"[0-9a-fA-F]{8}", parts[-1] or ""):
-            parts = parts[:-1]
-        s = " ".join(parts)
-        s = re.sub(r"\s+", " ", s).strip()
-        return s
-    plants: list[tuple[str, str]] = []
-    for t in tables:
-        pname = (name_by_table.get(t) or _derive_plant_name(t) or "").strip()
-        if not pname:
-            pname = t
-        plants.append((pname, t))
+    if curr_plant:
+        blocks.append((curr_plant, curr_plant_cell_row, slot_rows))
 
-    growatt_telemetry = _fetch_supabase_telemetry_map("growatt")
-    if not plants:
-        seen_p = set()
-        for dev_k, m in growatt_telemetry.items():
-            if dev_k in ("test_rest_fallback", "test_key_225"):
-                continue
-            tbl = str(m.get("table_name") or "").strip()
-            pname = str(m.get("plant_name") or "").strip()
-            dser = str(m.get("device_serial") or "").strip()
-            if not dser and "_" in tbl and len(tbl.split("_")[-1]) == 8:
-                continue
-            clean_tbl_name = _derive_plant_name(tbl) if tbl else ""
-            if clean_tbl_name:
-                disp_name = clean_tbl_name
-            elif dser:
-                disp_name = f"{pname} {dser}".strip() if pname else dser
-            elif pname:
-                disp_name = pname
-            else:
-                disp_name = dev_k
-
-            key_id = tbl or disp_name
-            if key_id and key_id not in seen_p:
-                seen_p.add(key_id)
-                plants.append((disp_name, key_id))
-
-    plants.sort(key=lambda x: (_norm_key(x[0]), _norm_key(x[1])))
-
-    # Mantener todas las plantas e inversores detectados
-
-
-    # Construir headers dinámicos: unión de columnas en orden (normalizando update_time -> Timestamp)
-    def _table_cols(table_name: str) -> list[str]:
-        try:
-            return [r[1] for r in conn_growatt.execute(f"PRAGMA table_info('{table_name}')").fetchall() if r and r[1]]
-        except Exception:
-            return []
-
-    metric_headers: list[str] = []
-    seen: set[str] = set()
-    for _, t in plants:
-        for col in _table_cols(t):
-            if _norm_key(col) == _norm_key("id"):
-                continue
-            ht = "Timestamp" if _norm_key(col) in (_norm_key("update_time"), _norm_key("timestamp")) else str(col)
-            nk = _norm_key(ht)
-            if not nk or nk in seen:
-                continue
-            seen.add(nk)
-            metric_headers.append(ht)
-
-    # Forzar Timestamp al inicio si existe
-    pos = {_norm_key(h): i for i, h in enumerate(metric_headers)}
-    metric_headers.sort(key=lambda h: (0 if _norm_key(h) == _norm_key("Timestamp") else 1, pos.get(_norm_key(h), 10**9)))
-
-    if not metric_headers:
-        headers = ["plant_name", "Hora", "Timestamp", "connection_status", "battery_voltage", "pv1_pv2_voltage", "pv1_pv2_recharging_current", "total_charge_current", "ac_input_voltage_frequency", "ac_output_voltage_frequency"]
-    else:
-        headers = ["plant_name", "Hora"] + metric_headers
-
-    # Leer datos existentes para preservarlos: (plant, slot) -> {header_norm: value}
-    def _read_existing() -> dict[tuple[str, str], dict[str, Any]]:
-        out: dict[tuple[str, str], dict[str, Any]] = {}
-        try:
-            col_to_hn: dict[int, str] = {}
-            for c in range(1, max(ws.max_column + 1, len(headers) + 1)):
-                v = ws.cell(1, c).value
-                if v is not None:
-                    raw_h = str(v).strip()
-                    hn = _norm_key(raw_h)
-                    if hn in (_norm_key("nodo"), _norm_key("plant_name")):
-                        col_to_hn[c] = _norm_key("plant_name")
-                    elif hn in (_norm_key("hora"), _norm_key("slot")):
-                        col_to_hn[c] = _norm_key("hora")
-                    elif hn in (_norm_key("update_time"), _norm_key("timestamp")):
-                        col_to_hn[c] = _norm_key("timestamp")
-                    elif hn in (_norm_key("connection_status"), _norm_key("status")):
-                        col_to_hn[c] = _norm_key("connection_status")
-                    else:
-                        col_to_hn[c] = hn
-
-            last_plant = ""
-            for r in range(2, ws.max_row + 1):
-                pv = ws.cell(r, 1).value
-                hv = ws.cell(r, 2).value
-                if isinstance(pv, str) and pv.strip():
-                    last_plant = pv.strip()
-                if not isinstance(hv, str) or not hv.strip() or not last_plant:
-                    continue
-                s = _canonical_slot(hv)
-                if not s:
-                    continue
-                key = (_norm_key(last_plant), s)
-                rowd: dict[str, Any] = {}
-                for c, hn in col_to_hn.items():
-                    val = ws.cell(r, c).value
-                    if val is not None:
-                        rowd[hn] = val
-                if rowd:
-                    out[key] = rowd
-        except Exception:
-            return {}
-        return out
-
-    existing = _read_existing()
-
-    # Limpiar hoja y reconstruir
-    try:
-        for rng in list(getattr(ws, "merged_cells", []).ranges):
+    # Si la hoja no tenía bloques predefinidos, crear la estructura estándar para los 7 nodos
+    if not blocks:
+        default_plants = [
+            "Nodo 1er Respaldo Últimas Noticias",
+            "Nodo Monte Cristo I",
+            "Nodo Antimano",
+            "Nodo Provemed 2do Respald",
+            "Nodo Porlamar 2do Respald",
+            "Nodo Casanay",
+            "Nodo CC las Vegas / Petar",
+        ]
+        for c_idx, h in enumerate(headers, start=1):
+            cell = ws.cell(1, c_idx)
+            cell.value = h
             try:
-                ws.unmerge_cells(str(rng))
+                cell.font = openpyxl.styles.Font(bold=True)
             except Exception:
                 pass
-    except Exception:
-        pass
+
+        curr_r = 2
+        for p in default_plants:
+            ws.cell(curr_r, 1).value = p
+            p_slots = {}
+            for i, hl in enumerate(["Medianoche", "Mañana", "Mediodía", "Tarde"]):
+                r_num = curr_r + i + 1
+                ws.cell(r_num, 2).value = hl
+                p_slots[_canonical_slot(hl)] = r_num
+            blocks.append((p, curr_r, p_slots))
+            curr_r += 6
+
+    # Cargar datos de SQLite
+    raw_tables = [t for t in _sqlite_tables(conn_growatt) if t.startswith("g_")] if conn_growatt else []
+
+    # Cargar datos de caché local growatt-dashboard.json
+    local_cache_results: list[dict[str, Any]] = []
     try:
-        if ws.max_row:
-            ws.delete_rows(1, ws.max_row)
+        gw_cache_path = STORAGE_DIR / "growatt-dashboard.json"
+        if gw_cache_path.exists():
+            gw_data = json.loads(gw_cache_path.read_text(encoding="utf-8", errors="ignore") or "{}")
+            local_cache_results = gw_data.get("results") or []
     except Exception:
-        pass
+        local_cache_results = []
 
-    for c, h in enumerate(headers, start=1):
-        cell = ws.cell(1, c)
-        cell.value = h
-        try:
-            cell.font = openpyxl.styles.Font(bold=True)
-        except Exception:
-            pass
-    ws.freeze_panes = "A2"
-
-    # Preconstruir mapeo: table -> {header_norm -> column_name}
-    table_map: dict[str, dict[str, str]] = {}
-    for _, t in plants:
-        m: dict[str, str] = {}
-        cols = _table_cols(t)
-        # timestamp preferido por tabla
-        time_col = None
-        for cand in ("update_time", "Timestamp", "timestamp", "inserted_at"):
-            if any(_norm_key(c) == _norm_key(cand) for c in cols):
-                # usar el nombre real tal cual está en la tabla
-                time_col = next((c for c in cols if _norm_key(c) == _norm_key(cand)), None)
-                if time_col:
-                    break
-        if time_col:
-            m[_norm_key("Timestamp")] = str(time_col)
-        for col in cols:
-            if _norm_key(col) == _norm_key("id"):
-                continue
-            if time_col and _norm_key(col) == _norm_key(time_col):
-                continue
-            m[_norm_key(str(col))] = str(col)
-        table_map[t] = m
-
-    def _latest_row(table: str) -> dict[str, Any] | None:
-        return _sqlite_latest_row(conn_growatt, table)
-
+    # Cargar telemetría remota de Supabase
     growatt_slot_telemetry = _fetch_supabase_telemetry_by_slot_map("growatt")
+    growatt_telemetry = _fetch_supabase_telemetry_map("growatt")
 
-    row = 2
-    for plant_name, t in plants:
-        if not plant_name or not t:
-            continue
-        colmap = table_map.get(t) or {}
+    for plant_name, pr, s_map in blocks:
+        norm_p = _norm_key(plant_name)
 
-        # Bloque 4 filas
-        for i, hl in enumerate(hour_labels):
-            r = row + i
-            if i == 0:
-                ws.cell(r, 1).value = plant_name
-            ws.cell(r, 2).value = hl
-
-            slot_i = _canonical_slot(hl)
-            is_after = False
+        # 1. Buscar en SQLite
+        matched_t = _match_growatt_plant_to_table(plant_name, raw_tables)
+        sqlite_row = None
+        if matched_t and conn_growatt:
             try:
-                slots_order = ["medianoche", "manana", "mediodia", "tarde"]
-                if slots_order.index(slot_i) > slots_order.index(slot):
-                    is_after = True
+                conn_growatt.row_factory = sqlite3.Row
+                db_r = conn_growatt.execute(f'SELECT * FROM "{matched_t}" ORDER BY id DESC LIMIT 1').fetchone()
+                if db_r:
+                    sqlite_row = dict(db_r)
+            except Exception:
+                sqlite_row = None
+
+        # 2. Buscar en caché local
+        cache_row = None
+        for res in local_cache_results:
+            r_pname = str(res.get("plant_name") or "")
+            if _norm_key(r_pname) == norm_p or (norm_p and _norm_key(r_pname) in norm_p) or (r_pname and norm_p in _norm_key(r_pname)):
+                m_dict = dict(res.get("metrics") or {})
+                m_row = dict(res.get("row") or {})
+                panel = dict(res.get("panel_device") or {})
+                cache_row = {
+                    "update_time": panel.get("update_time") or m_row.get("update_time") or res.get("scraped_at"),
+                    "connection_status": panel.get("connection_status") or m_row.get("connection_status") or "Online",
+                    "battery_voltage": m_row.get("battery_voltage") or m_dict.get("Battery Voltage") or m_dict.get("battery_voltage"),
+                    "pv1_pv2_voltage": m_row.get("pv1_pv2_voltage") or m_dict.get("PV1/PV2 Voltage") or m_dict.get("pv1_pv2_voltage"),
+                    "pv1_pv2_recharging_current": m_row.get("pv1_pv2_recharging_current") or m_dict.get("PV1/PV2 Recharging Current"),
+                    "total_charge_current": m_row.get("total_charge_current") or m_dict.get("Total Charge Current"),
+                    "ac_input_voltage_frequency": m_row.get("ac_input_voltage_frequency") or m_dict.get("Ac Input Voltage/Frequency") or m_dict.get("AC Input Voltage/Frequency"),
+                    "ac_output_voltage_frequency": m_row.get("ac_output_voltage_frequency") or m_dict.get("AC Output Voltage/Frequency"),
+                }
+                break
+
+        # 3. Buscar en Supabase
+        supa_row = None
+        for cand_k in (plant_name, matched_t, norm_p):
+            if cand_k:
+                nk = _norm_key(str(cand_k))
+                if (nk, slot) in growatt_slot_telemetry:
+                    supa_row = growatt_slot_telemetry[(nk, slot)]
+                    break
+                elif nk in growatt_telemetry:
+                    supa_row = growatt_telemetry[nk]
+                    break
+
+        # Seleccionar mejor fuente de datos para el slot
+        best_data = None
+        if sqlite_row and _has_numeric_metrics(sqlite_row):
+            best_data = sqlite_row
+        elif cache_row and _has_numeric_metrics(cache_row):
+            best_data = cache_row
+        elif supa_row and _has_numeric_metrics(supa_row):
+            best_data = supa_row
+        elif sqlite_row:
+            best_data = sqlite_row
+        elif cache_row:
+            best_data = cache_row
+        elif supa_row:
+            best_data = supa_row
+
+        # Actualizar cada franja horaria respetando las reglas de slots pasados vs futuros
+        for s_name, r_idx in s_map.items():
+            if not r_idx:
+                continue
+            try:
+                s_idx = slot_order.index(s_name)
             except ValueError:
-                pass
-            k_cands = [(_norm_key(plant_name), slot_i), (_norm_key(t), slot_i)]
-            prev = {}
-            if not is_after:
-                for kc in k_cands:
-                    if kc[0] and kc in existing:
-                        prev = existing[kc]
-                        break
-            if (not prev or not _has_numeric_metrics(prev)) and not is_after:
-                for ck in (t, plant_name, _derive_plant_name(t), plant_name.split()[0]):
-                    if ck:
-                        supa_m = growatt_slot_telemetry.get((_norm_key(ck), slot_i))
-                        # Validar explícitamente que la data pasada pertenece a hoy
-                        if supa_m and (_is_today(supa_m.get("timestamp")) or _is_today(supa_m.get("update_time")) or _is_today(supa_m.get("inserted_at")) or _is_db_row_from_today(supa_m)):
-                            prev = supa_m
-                            break
-            has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("hora"))) if prev else False
-            for c, h in enumerate(headers, start=1):
-                hn = _norm_key(h)
-                if hn in (_norm_key("plant_name"), _norm_key("hora")):
-                    continue
-                p_val = _get_val_from_dict(prev, h, colmap) if prev else None
-                if hn == _norm_key("timestamp"):
-                    if p_val in (None, "", " "):
-                        p_val = "SIN DATOS" if (not is_after and not has_prev_val) else None
-                    else:
-                        p_val = _format_short_timestamp(p_val)
-                elif p_val in (None, "", " "):
-                    p_val = None
+                s_idx = 0
+
+            # Slots futuros: no sobreescribir ni forzar SIN DATOS
+            if s_idx > target_idx:
+                continue
+
+            # Si es el slot actual
+            if s_name == slot:
+                if best_data:
+                    u_time = str(best_data.get("update_time") or best_data.get("Timestamp") or best_data.get("timestamp") or best_data.get("inserted_at") or "")
+                    conn_st = str(best_data.get("connection_status") or best_data.get("status") or "")
+                    b_volt = best_data.get("battery_voltage") or best_data.get("Battery Voltage")
+                    pv_volt = best_data.get("pv1_pv2_voltage") or best_data.get("PV1/PV2 Voltage")
+                    pv_curr = best_data.get("pv1_pv2_recharging_current") or best_data.get("PV1/PV2 Recharging Current")
+                    tot_curr = best_data.get("total_charge_current") or best_data.get("Total Charge Current")
+                    ac_in = best_data.get("ac_input_voltage_frequency") or best_data.get("Ac Input Voltage/Frequency") or best_data.get("AC Input Voltage/Frequency")
+                    ac_out = best_data.get("ac_output_voltage_frequency") or best_data.get("AC Output Voltage/Frequency")
+
+                    ws.cell(r_idx, 3).value = _format_short_timestamp(u_time) if u_time else None
+                    ws.cell(r_idx, 4).value = conn_st or None
+                    ws.cell(r_idx, 5).value = _clean_metric_val(b_volt) if b_volt else None
+                    ws.cell(r_idx, 6).value = _clean_metric_val(pv_volt) if pv_volt else None
+                    ws.cell(r_idx, 7).value = _clean_metric_val(pv_curr) if pv_curr else None
+                    ws.cell(r_idx, 8).value = _clean_metric_val(tot_curr) if tot_curr else None
+                    ws.cell(r_idx, 9).value = _clean_metric_val(ac_in) if ac_in else None
+                    ws.cell(r_idx, 10).value = _clean_metric_val(ac_out) if ac_out else None
+
+                    _apply_row_fill_if_offgrid(ws, r_idx, len(headers), conn_st)
                 else:
-                    p_val = _clean_metric_val(p_val)
-                ws.cell(r, c).value = p_val
-
-            if prev:
-                _apply_row_fill_if_offgrid(ws, r, len(headers), prev.get("status") or prev.get("timestamp") or "")
-
-        try:
-            ws.merge_cells(start_row=row, start_column=1, end_row=row + 3, end_column=1)
-        except Exception:
-            pass
-
-        # Actualizar solo el slot pedido — priorizar Supabase sobre SQLite local
-        target_r = None
-        for i, hl in enumerate(hour_labels):
-            if _canonical_slot(hl) == slot:
-                target_r = row + i
-                break
-
-        # Buscar en Supabase primero, cubriendo tabla, planta, serial y nombre limpio
-        serial_m = re.search(r"([A-Z0-9]{8,15})", t) or re.search(r"([A-Z0-9]{8,15})", plant_name)
-        dev_serial_cand = serial_m.group(1) if serial_m else ""
-        supa_cands = [t, plant_name, _derive_plant_name(t)]
-        if dev_serial_cand:
-            supa_cands.append(dev_serial_cand)
-
-        supa_target = None
-        for sc in supa_cands:
-            cand_res = growatt_slot_telemetry.get((_norm_key(sc), slot))
-            if cand_res:
-                supa_target = cand_res
-                break
-
-        if supa_target and (_is_today(supa_target.get("timestamp")) or _is_today(supa_target.get("update_time")) or _is_today(supa_target.get("inserted_at")) or _is_db_row_from_today(supa_target)):
-            best = supa_target
-        else:
-            best = None
-            db_row = _latest_row(t)
-            if db_row is not None and (_is_today(db_row.get("timestamp")) or _is_today(db_row.get("update_time")) or _is_today(db_row.get("inserted_at")) or _is_db_row_from_today(db_row)):
-                ts_raw = str(db_row.get("timestamp") or db_row.get("update_time") or db_row.get("inserted_at") or "")
-                h_match = re.search(r"\s(\d{1,2}):\d{2}", ts_raw) if ts_raw else None
-                if h_match:
-                    h = int(h_match.group(1))
-                    # Franjas horarias continuas sin huecos
-                    if (slot == "manana" and 5 <= h < 12) or \
-                       (slot == "mediodia" and 12 <= h < 17) or \
-                       (slot == "tarde" and 17 <= h < 23) or \
-                       (slot == "medianoche" and (h >= 23 or h < 5)):
-                        best = db_row
-                else:
-                    best = db_row
-
-        if best and not _is_today(best.get("timestamp")) and not _is_today(best.get("update_time")) and not _is_today(best.get("inserted_at")) and not _is_db_row_from_today(best):
-            best = None
-
-        if target_r is not None:
-            if best is None:
-                for c, h in enumerate(headers, start=1):
-                    hn = _norm_key(h)
-                    if hn in (_norm_key("plant_name"), _norm_key("hora")):
-                        continue
-                    if hn == _norm_key("timestamp"):
-                        ws.cell(target_r, c).value = "SIN DATOS"
-                    else:
-                        ws.cell(target_r, c).value = None
+                    existing_c3 = ws.cell(r_idx, 3).value
+                    if not existing_c3:
+                        ws.cell(r_idx, 3).value = "SIN DATOS"
             else:
-                status = str(best.get("status") or "").strip()
-                colmap = table_map.get(t) or {}
-                for c, h in enumerate(headers, start=1):
-                    hn = _norm_key(h)
-                    if hn in (_norm_key("plant_name"), _norm_key("hora")):
-                        continue
-                    db_col = colmap.get(hn)
-                    val = None
-                    if db_col and db_col in best:
-                        val = best.get(db_col)
-                    elif h in best:
-                        val = best.get(h)
-                    elif hn in best:
-                        val = best.get(hn)
-                    else:
-                        for bk, bv in best.items():
-                            if _norm_key(bk) == hn:
-                                val = bv
-                                break
-                    if hn == _norm_key("timestamp"):
-                        if val in (None, "", " "):
-                            val = status or "SIN DATOS"
-                        else:
-                            val = _format_short_timestamp(val)
-                    elif val in (None, "", " "):
-                        val = None
-                    else:
-                        val = _clean_metric_val(val)
-                    ws.cell(target_r, c).value = val
-                _apply_row_fill_if_offgrid(ws, target_r, len(headers), status)
-
-        row += 4
-
-        # Fila separadora (espacio visual entre bloques)
-        sep_r = row
-        ws.cell(sep_r, 1)
-        try:
-            ws.row_dimensions[sep_r].height = 8
-        except Exception:
-            pass
-        row += 1
+                # Slot anterior: si la celda está vacía, marcar SIN DATOS
+                existing_c3 = ws.cell(r_idx, 3).value
+                if existing_c3 is None or str(existing_c3).strip() == "":
+                    ws.cell(r_idx, 3).value = "SIN DATOS"
 
 
 def _pick_best_value(row: dict[str, Any], header: str, provider: str) -> Any:
@@ -2409,6 +2264,13 @@ def _generate_or_update_report(*, slot: str) -> Path:
         # Growatt: llenar basado en Supabase o BD
         if "Growhatt" in wb.sheetnames:
             _update_report_growatt_sheet(ws=wb["Growhatt"], conn_growatt=conn_growatt, slot=slot)
+
+        # Auditoría de Excel y BD: deduplicar y purgar inversores repetidos o sin data
+        for sh_name in list(wb.sheetnames):
+            try:
+                _audit_and_purge_excel_sheet(wb[sh_name], purge_no_data=True)
+            except Exception:
+                pass
 
         # Estilo (todas las hojas existentes del reporte)
         for sh_name in list(wb.sheetnames):
@@ -2710,10 +2572,7 @@ def _render_report_html_view(slot: str = "", autoprint: bool = False) -> str:
         }}
 
         @media print {{
-            @page {{
-                size: landscape;
-                margin: 8mm;
-            }}
+            @page {{ size: landscape; margin: 8mm; }}
             body {{
                 background: #fff !important;
                 color: #000 !important;
@@ -2731,45 +2590,14 @@ def _render_report_html_view(slot: str = "", autoprint: bool = False) -> str:
             }}
             .header-title {{ color: #000 !important; font-size: 14pt !important; }}
             .header-meta {{ color: #333 !important; }}
-            .slot-pill {{
-                background: #e2e8f0 !important;
-                color: #000 !important;
-                border: 1px solid #999 !important;
-            }}
-            .sheet-section {{
-                background: #fff !important;
-                border: 1px solid #999 !important;
-                box-shadow: none !important;
-                margin-bottom: 16px !important;
-                page-break-after: always;
-            }}
-            .sheet-title {{
-                background: #e2e8f0 !important;
-                color: #000 !important;
-                border-bottom: 2px solid #000 !important;
-                font-size: 11pt !important;
-            }}
-            .report-table {{
-                font-size: 6.5pt !important;
-            }}
-            .report-table th {{
-                background: #e2e8f0 !important;
-                color: #000 !important;
-                border: 1px solid #999 !important;
-            }}
-            .report-table td {{
-                border: 1px solid #ccc !important;
-                color: #000 !important;
-            }}
-            .offgrid-row {{
-                background: #fef08a !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }}
-            .footer-note {{
-                color: #555 !important;
-                border-top: 1px solid #ccc !important;
-            }}
+            .slot-pill {{ background: #e2e8f0 !important; color: #000 !important; border: 1px solid #999 !important; }}
+            .sheet-section {{ background: #fff !important; border: 1px solid #999 !important; box-shadow: none !important; margin-bottom: 16px !important; page-break-after: always; }}
+            .sheet-title {{ background: #e2e8f0 !important; color: #000 !important; border-bottom: 2px solid #000 !important; font-size: 11pt !important; }}
+            .report-table {{ font-size: 6.5pt !important; }}
+            .report-table th {{ background: #e2e8f0 !important; color: #000 !important; border: 1px solid #999 !important; }}
+            .report-table td {{ border: 1px solid #ccc !important; color: #000 !important; }}
+            .offgrid-row {{ background: #fef08a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+            .footer-note {{ color: #555 !important; border-top: 1px solid #ccc !important; }}
         }}
     </style>
 </head>
@@ -2808,6 +2636,12 @@ def _render_report_html_view(slot: str = "", autoprint: bool = False) -> str:
 
 def _events_file(provider: str) -> Path:
     return STORAGE_DIR / f"plant-events-{provider}.jsonl"
+
+
+
+
+
+
 
 # Creado por Luis G.
 def _append_plant_event(*, provider: str, plant_id: str, outcome: str, ts: float) -> None:
@@ -2858,6 +2692,166 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
     except Exception:
         return []
     return out
+
+
+def _base_plant_name(p: str) -> str:
+    if not p:
+        return ""
+    s = str(p).strip()
+    s = re.sub(r"\s+[A-Z0-9]{8,15}$", "", s).strip()
+    return s
+
+
+def _has_real_metric_value(val: Any) -> bool:
+    if val is None:
+        return False
+    s = str(val).strip()
+    if not s:
+        return False
+    invalid = {
+        "sin datos", "no_data", "no_table", "no_inverter", "n/a", "none", "null",
+        "-", "-v", "-/-v", "-a", "-/-a", "-v/-hz", "-/-hz"
+    }
+    if s.lower() in invalid:
+        return False
+    if s in ("0/0V", "0/0A", "-/-V", "-/-A"):
+        return False
+    return any(c.isdigit() for c in s)
+
+
+def _audit_and_purge_excel_sheet(ws, purge_no_data: bool = True) -> None:
+    """Audita y purga inversores repetidos y sin datos en una hoja de Excel.
+    
+    1. Agrupa por bloques de planta (4 filas de horarios por planta).
+    2. Si detecta plantas duplicadas (por nombre base), fusiona datos y elimina el duplicado redundante.
+    3. Si purge_no_data=True y existen plantas con datos, elimina bloques de inversores sin ninguna medición.
+    4. Limpia rangos combinados y re-combina ordenadamente la columna 1.
+    """
+    if not ws or ws.max_row <= 1:
+        return
+
+    # 1. Identificar bloques de planta
+    blocks: list[dict[str, Any]] = []
+    curr_plant = ""
+    curr_start = 2
+    curr_rows: list[int] = []
+
+    for r in range(2, ws.max_row + 1):
+        p_val = ws.cell(r, 1).value
+        p_str = str(p_val).strip() if p_val is not None else ""
+
+        if p_str and p_str != curr_plant:
+            if curr_plant and curr_rows:
+                blocks.append({
+                    "plant": curr_plant,
+                    "base": _base_plant_name(curr_plant),
+                    "norm_base": _norm_key(_base_plant_name(curr_plant)),
+                    "start_row": curr_start,
+                    "rows": list(curr_rows)
+                })
+            curr_plant = p_str
+            curr_start = r
+            curr_rows = [r]
+        else:
+            if curr_plant:
+                curr_rows.append(r)
+
+    if curr_plant and curr_rows:
+        blocks.append({
+            "plant": curr_plant,
+            "base": _base_plant_name(curr_plant),
+            "norm_base": _norm_key(_base_plant_name(curr_plant)),
+            "start_row": curr_start,
+            "rows": list(curr_rows)
+        })
+
+    if not blocks:
+        return
+
+    # Evaluar métricas reales en cada bloque
+    for b in blocks:
+        valid_cnt = 0
+        for r_idx in b["rows"]:
+            for c in range(3, ws.max_column + 1):
+                if _has_real_metric_value(ws.cell(r_idx, c).value):
+                    valid_cnt += 1
+        b["valid_count"] = valid_cnt
+        b["has_data"] = valid_cnt > 0
+
+    total_with_data = sum(1 for b in blocks if b["has_data"])
+
+    # 2. Deduplicación por norm_base (eliminar inversores repetidos)
+    by_base: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for b in blocks:
+        by_base[b["norm_base"]].append(b)
+
+    rows_to_delete: set[int] = set()
+
+    for n_base, b_list in by_base.items():
+        if len(b_list) > 1:
+            b_list_sorted = sorted(b_list, key=lambda x: (1 if x["has_data"] else 0, x["valid_count"]), reverse=True)
+            keeper = b_list_sorted[0]
+            for discarded in b_list_sorted[1:]:
+                # Fusionar métricas útiles del duplicado hacia el keeper
+                for r_disc, r_keep in zip(discarded["rows"], keeper["rows"]):
+                    for c in range(3, ws.max_column + 1):
+                        v_keep = ws.cell(r_keep, c).value
+                        v_disc = ws.cell(r_disc, c).value
+                        if not _has_real_metric_value(v_keep) and _has_real_metric_value(v_disc):
+                            ws.cell(r_keep, c).value = v_disc
+                for r in discarded["rows"]:
+                    rows_to_delete.add(r)
+
+    # 3. Eliminar plantas completamente sin datos si existen plantas con mediciones en la hoja (excepto plantas base esenciales del sistema)
+    core_protected = {
+        "ultimas noticias", "monte cristo", "antimano", "provemed", "porlamar", "casanay", "vegas", "petar"
+    }
+    is_growatt_sheet = str(getattr(ws, "title", "")).lower() in ("growhatt", "growatt")
+    if purge_no_data and total_with_data > 0:
+        for b in blocks:
+            # Creado por Luis G.
+            # En la hoja Growatt nunca purgar los nodos principales requeridos por el cliente
+            if is_growatt_sheet:
+                nb = b.get("norm_base", "")
+                if any(cp in nb for cp in core_protected):
+                    continue
+            if not b["has_data"] and b["start_row"] not in rows_to_delete:
+                for r in b["rows"]:
+                    rows_to_delete.add(r)
+
+    if not rows_to_delete:
+        return
+
+    # Descombinar celdas antes de borrar filas
+    for rng in list(getattr(ws, "merged_cells", []).ranges):
+        try:
+            ws.unmerge_cells(str(rng))
+        except Exception:
+            pass
+
+    # Borrar filas de abajo hacia arriba de forma segura
+    for r in sorted(rows_to_delete, reverse=True):
+        try:
+            ws.delete_rows(r, 1)
+        except Exception:
+            pass
+
+    # Re-combinar columna 1 (Planta) sobre sus filas correspondientes
+    r = 2
+    while r <= ws.max_row:
+        p_val = ws.cell(r, 1).value
+        if p_val and str(p_val).strip():
+            end_r = r
+            while end_r + 1 <= ws.max_row and (ws.cell(end_r + 1, 1).value is None or str(ws.cell(end_r + 1, 1).value).strip() == ""):
+                end_r += 1
+            if end_r > r:
+                try:
+                    ws.merge_cells(start_row=r, start_column=1, end_row=end_r, end_column=1)
+                except Exception:
+                    pass
+            r = end_r + 1
+        else:
+            r += 1
 
 
 _re_sm_plant = re.compile(r"\bPlant\s+(\d+)\b", re.IGNORECASE)
@@ -4783,6 +4777,15 @@ def _finalize_run(provider: str, job: Job) -> None:
                     continue
                 job.seen_plant_events.add(key)
                 _append_plant_event(provider=provider, plant_id=pid, outcome="fail", ts=ts)
+
+        # Diagrama de flujo: Guarda local -> Envía copia (Supabase) + Excel
+        # Actualizar automáticamente el reporte Excel local con la data fresca recién capturada
+        try:
+            curr_slot = _current_slot()
+            if curr_slot:
+                _generate_or_update_report(slot=curr_slot)
+        except Exception:
+            pass
     except Exception:
         return
 

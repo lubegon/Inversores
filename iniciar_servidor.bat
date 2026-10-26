@@ -16,27 +16,76 @@ echo   Sistema elaborado por Duvelis Huiza y el Lic. Luis G.
 echo ======================================================================
 echo.
 
-rem 1. Verificar si Python esta instalado
-python --version >nul 2>&1
-if %errorlevel% equ 0 goto python_installed
+rem 1. Detección inteligente de Python (Priorizando Python 3.10)
+set "PY_EXE="
 
-rem Intentar encontrar python si esta instalado pero no en el PATH
+rem Comprobar si Python 3.10 está instalado en rutas estándar
+if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" (
+    set "PY_EXE=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
+    goto setup_py_path
+)
+if exist "C:\Python310\python.exe" (
+    set "PY_EXE=C:\Python310\python.exe"
+    goto setup_py_path
+)
+if exist "%ProgramFiles%\Python310\python.exe" (
+    set "PY_EXE=%ProgramFiles%\Python310\python.exe"
+    goto setup_py_path
+)
+
+rem Comprobar comando py (Windows Python Launcher) con Python 3.10
+py -3.10 --version >nul 2>&1
+if %errorlevel% equ 0 (
+    for /f "tokens=*" %%i in ('py -3.10 -c "import sys; print(sys.executable)" 2^>nul') do set "PY_EXE=%%i"
+    if defined PY_EXE goto setup_py_path
+)
+
+rem Comprobar comando python en el PATH
+python --version >nul 2>&1
+if %errorlevel% equ 0 (
+    for /f "tokens=*" %%i in ('where python 2^>nul') do (
+        if not defined PY_EXE set "PY_EXE=%%i"
+    )
+    if defined PY_EXE goto setup_py_path
+)
+
+rem Comprobar py launcher general
+py -3 --version >nul 2>&1
+if %errorlevel% equ 0 (
+    for /f "tokens=*" %%i in ('py -3 -c "import sys; print(sys.executable)" 2^>nul') do set "PY_EXE=%%i"
+    if defined PY_EXE goto setup_py_path
+)
+
+rem Comprobar otras versiones de Python (3.11, 3.12, 3.x) existentes en el equipo
+if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
+    set "PY_EXE=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+    goto setup_py_path
+)
 if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
-    set "PATH=%LOCALAPPDATA%\Programs\Python\Python312\;%LOCALAPPDATA%\Programs\Python\Python312\Scripts\;%PATH%"
-    goto python_installed
+    set "PY_EXE=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+    goto setup_py_path
+)
+for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python*") do (
+    if exist "%%D\python.exe" (
+        set "PY_EXE=%%D\python.exe"
+        goto setup_py_path
+    )
 )
 
 echo [INFO] Python no esta instalado o no se encuentra en el PATH.
-echo [INFO] Iniciando descarga e instalacion automatica de Python 3.12...
+echo [INFO] Preparando instalacion automatica de Python 3.10.11 (estable para Windows)...
 echo.
 
 echo [PASO 1/3] Buscando instalador de Python local...
-if exist "python-3.12.3-amd64.exe" (
-    echo [OK] Instalador local python-3.12.3-amd64.exe encontrado.
+if exist "python-3.10.11-amd64.exe" (
+    echo [OK] Instalador local python-3.10.11-amd64.exe encontrado.
+    set "PYTHON_INSTALLER=python-3.10.11-amd64.exe"
+) else if exist "python-3.12.3-amd64.exe" (
+    echo [INFO] Instalador local disponible encontrado.
     set "PYTHON_INSTALLER=python-3.12.3-amd64.exe"
 ) else (
-    echo [INFO] No se encontro instalador local. Descargando de python.org...
-    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; echo 'Descargando...'; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe' -OutFile 'python_installer.exe'"
+    echo [INFO] Descargando Python 3.10.11 desde python.org (compatible sin administrador)...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; echo 'Descargando Python 3.10...'; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe' -OutFile 'python_installer.exe'"
     if errorlevel 1 (
         echo [ERROR] No se pudo descargar el instalador de Python. Asegurate de tener conexion a internet.
         pause
@@ -66,16 +115,27 @@ echo [OK] Instalacion completada con exito.
 echo.
 
 echo [PASO 3/3] Configurando variables de entorno temporales...
-set "PATH=%LOCALAPPDATA%\Programs\Python\Python312\;%LOCALAPPDATA%\Programs\Python\Python312\Scripts\;%PATH%"
+if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" (
+    set "PY_EXE=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
+) else if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+    set "PY_EXE=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+)
+
+:setup_py_path
+if defined PY_EXE (
+    for %%F in ("%PY_EXE%") do set "PY_DIR=%%~dpF"
+    set "PATH=%PY_DIR%;%PY_DIR%Scripts\;%PATH%"
+)
 
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] No se pudo verificar la instalacion de Python en el PATH temporal.
+    echo [ERROR] No se pudo verificar la ejecucion de Python.
     echo Por favor, cierre esta ventana e intente abrir iniciar_servidor.bat de nuevo.
     pause
     exit /b 1
 )
-echo [OK] Entorno de Python configurado correctamente.
+echo [OK] Entorno de Python configurado correctamente:
+python --version
 echo.
 
 :python_installed

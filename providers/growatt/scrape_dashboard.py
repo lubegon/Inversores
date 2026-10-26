@@ -135,20 +135,33 @@ def _extract_metrics_from_embedded_table(page) -> dict[str, str]:
 
     out: dict[str, str] = {}
 
-    # 1. Buscar en la tabla principal embebida (animPan3 i.tips.w table o similares)
+    # 1. Asegurar hover sobre el ícono de batería para que el tooltip se active si es dinámico
+    for anim_sel in ["div.animPan.animPan3", ".animPan3", "div.animPan3", "div.animPan:nth-child(3)", "div.animPan"]:
+        try:
+            el = page.locator(anim_sel).first
+            if el.count() > 0:
+                el.hover(timeout=2000)
+                page.wait_for_timeout(400)
+                break
+        except Exception:
+            pass
+
+    # 2. Buscar en la tabla principal embebida (animPan3 i.tips.w table o similares)
     table_locators = [
         SEL_TIPS_BATTERY_TABLE,
         "div.animPan i.tips.w table",
         "i.tips.w table",
+        "div[class*='animPan'] table",
         "#panel_device table",
         ".deviceBox table",
-        "table:has(td)"
+        "table:has(td:has-text('Battery Voltage'))",
+        "table:has(td:has-text('Battery'))",
     ]
 
     table = None
     for loc in table_locators:
         try:
-            t = page.locator(loc).filter(has_text=re.compile(r"(Battery|Voltage|Current|AC|PV)", re.I)).first
+            t = page.locator(loc).filter(has_text=re.compile(r"(Battery|Voltage)", re.I)).first
             if t.count() > 0:
                 table = t
                 break
@@ -156,17 +169,8 @@ def _extract_metrics_from_embedded_table(page) -> dict[str, str]:
             pass
 
     if table is not None:
-        # Intento con retry backoff para tolerar latencias de carga
-        for attempt in range(3):
-            try:
-                table.wait_for(state="attached", timeout=5_000 * (attempt + 1))
-                break
-            except Exception:
-                if attempt == 2:
-                    break
-                time.sleep(0.5 * (2 ** attempt))
-
         try:
+            table.wait_for(state="attached", timeout=5_000)
             rows = table.locator("tbody tr, tr")
             for i in range(rows.count()):
                 tr = rows.nth(i)
@@ -183,29 +187,36 @@ def _extract_metrics_from_embedded_table(page) -> dict[str, str]:
         except Exception:
             pass
 
-    # 2. Fallback vía JS para extraer pares Label: Value en cualquier elemento de tips o métricas
-    if not out:
+    # 3. Fallback exhaustivo vía JS si aún no tenemos Battery Voltage
+    has_battery = any("battery" in k.lower() for k in out.keys())
+    if not has_battery:
         try:
             js_metrics = page.evaluate(
                 """() => {
                     const res = {};
-                    const rows = Array.from(document.querySelectorAll('i.tips.w table tr, .deviceBox tr, div[class*="tips"] tr, .param-item'));
-                    rows.forEach(r => {
-                        const tds = r.querySelectorAll('td, span');
-                        if (tds.length >= 2) {
-                            const k = (tds[0].innerText || '').strip ? tds[0].innerText.trim() : '';
-                            const v = (tds[1].innerText || '').strip ? tds[1].innerText.trim() : '';
-                            if (k && v && (k.includes('Voltage') || k.includes('Current') || k.includes('Battery') || k.includes('AC') || k.includes('PV'))) {
-                                res[k] = v.replace(/\\s+/g, '');
+                    const tables = Array.from(document.querySelectorAll('i.tips table, div.animPan table, .deviceBox table, table'));
+                    for (const tbl of tables) {
+                        const rows = Array.from(tbl.querySelectorAll('tr'));
+                        for (const r of rows) {
+                            const tds = r.querySelectorAll('td, th, span');
+                            if (tds.length >= 2) {
+                                const k = (tds[0].innerText || '').trim();
+                                const v = (tds[1].innerText || '').trim();
+                                if (k && v && (k.toLowerCase().includes('battery') || k.toLowerCase().includes('voltage') || k.toLowerCase().includes('current') || k.toLowerCase().includes('charge') || k.toLowerCase().includes('ac input') || k.toLowerCase().includes('ac output'))) {
+                                    res[k] = v.replace(/\\s+/g, '');
+                                }
                             }
                         }
-                    });
+                        if (Object.keys(res).some(k => k.toLowerCase().includes('battery'))) {
+                            break;
+                        }
+                    }
                     return res;
                 }"""
             )
             if js_metrics and isinstance(js_metrics, dict):
                 for k, v in js_metrics.items():
-                    if k not in out and v:
+                    if v:
                         out[k] = v
         except Exception:
             pass
@@ -411,8 +422,9 @@ def main() -> None:
             page = context.new_page()
             page.set_default_timeout(30_000)
             page.set_default_navigation_timeout(60_000)
+            # Permitir recursos visuales y diagramas para que los tooltips y animPan se rendericen
             try:
-                page.route("**/*.{png,jpg,jpeg,gif,webp,ico,woff,woff2,ttf,eot}", lambda route: route.abort())
+                page.route("**/*.{mp4,avi,mkv,webm}", lambda route: route.abort())
             except Exception:
                 pass
 
@@ -469,7 +481,7 @@ def main() -> None:
                         except Exception:
                             pass
 
-                        page.wait_for_timeout(500)
+                        page.wait_for_timeout(2500)
 
                         # Esperar panel del dispositivo
                         try:
@@ -603,6 +615,16 @@ def main() -> None:
                 _write_json(out_json, payload)
                 log.ok(f"Guardado: {out_json}")
                 _update_sync_status("growatt", len(plant_names), len(plant_names), "completed", base_dir)
+
+                # Diagrama de flujo: Guarda local -> Envía copia (Supabase) + Excel
+                try:
+                    from webui_server import _generate_or_update_report, _current_slot
+                    curr_slot = _current_slot()
+                    if curr_slot:
+                        _generate_or_update_report(slot=curr_slot)
+                        log.ok(f"Reporte Excel local actualizado automáticamente para el turno: {curr_slot}")
+                except Exception as ex:
+                    log.warn(f"Aviso actualizando reporte Excel local: {ex}")
             except Exception as e:
                 try:
                     dump_debug(page, base_dir, "growatt-dashboard-exception")
