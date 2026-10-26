@@ -1,5 +1,5 @@
 {
-  "version": "2.19.0",
+  "version": "2.19.1",
   "release_date": "2026-10-25",
-  "notes": "Optimizacion de flujo segun diagrama: finalizacion total del ciclo de scraping y guardado local sin llamadas HTTP intermedias, seguido de actualizacion inmediata de copia Excel y subida masiva ultrarrapida por lotes (batch) a Supabase."
+  "notes": "Correccion de reporte Excel: visibilidad y combinacion del nombre de inversores en columna Nodo de Growatt, y saneamiento estricto anti-duplicacion horaria (Medianoche/Mañana/Mediodia/Tarde) en ShineMonitor y Values."
 }

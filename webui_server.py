@@ -195,9 +195,31 @@ def _current_slot() -> str:
         return "manana"
     elif 12 <= h < 17:
         return "mediodia"
-    elif 17 <= h < 23:
-        return "tarde"
     return "medianoche"
+
+
+def _slot_for_timestamp(ts: Any) -> str | None:
+    if not ts:
+        return None
+    s = str(ts).strip()
+    if not s or s in ("SIN DATOS", "NO_DATA", "Online", "Offline", "None", "null", "none"):
+        return None
+    m = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", s)
+    if not m:
+        return None
+    try:
+        h = int(m.group(1))
+        if "Z" in s or "+00" in s:
+            h = (h - 4) % 24
+        if 5 <= h < 12:
+            return "manana"
+        elif 12 <= h < 17:
+            return "mediodia"
+        elif 17 <= h < 23:
+            return "tarde"
+        return "medianoche"
+    except Exception:
+        return None
 
 
 def _is_today(val: Any) -> bool:
@@ -1449,6 +1471,13 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
                         if supa_m:
                             prev = supa_m
                             break
+            # Saneamiento anti-duplicación: si prev contiene un timestamp que no pertenece a este slot_i, descartarlo
+            if prev:
+                prev_ts = prev.get("timestamp") or prev.get("update_time") or prev.get("Timestamp")
+                if prev_ts and _is_today(prev_ts):
+                    prev_slot = _slot_for_timestamp(prev_ts)
+                    if prev_slot and prev_slot != slot_i:
+                        prev = {}
             has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("plant_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
@@ -1475,10 +1504,25 @@ def _update_report_shinemonitor_sheet(*, ws, conn_sm: sqlite3.Connection | None,
         except Exception:
             pass
 
-        # Actualizar solo el slot pedido con la fila más reciente de la BD o Supabase
+        # Actualizar solo el slot pedido con la fila correspondiente a este horario
         best = _latest_any_row(tables, d.get("device_key") or "", device, plant, d.get("plant_id") or "")
         if best and not _is_today(best.get("timestamp")) and not _is_today(best.get("update_time")) and not _is_today(best.get("inserted_at")) and not _is_db_row_from_today(best):
             best = None
+
+        # Saneamiento anti-duplicación: verificar que best pertenezca estrictamente al slot pedido (ej. no repetir datos de mañana en la tarde)
+        if best:
+            best_ts = best.get("timestamp") or best.get("update_time") or best.get("Timestamp") or best.get("inserted_at")
+            best_slot = _slot_for_timestamp(best_ts)
+            if best_slot and best_slot != slot:
+                # La lectura no pertenece a este turno; buscar si hay registro específico para este turno en Supabase
+                specific_slot_data = None
+                for ck in (d.get("device_key"), plant, d.get("device"), d.get("plant_id")):
+                    if ck:
+                        supa_m = sm_slot_telemetry.get((_norm_key(ck), slot))
+                        if supa_m:
+                            specific_slot_data = supa_m
+                            break
+                best = specific_slot_data
 
         # buscar fila del slot en este bloque
         for i, hl in enumerate(hour_labels):
@@ -1752,6 +1796,13 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
                         if supa_m:
                             prev = supa_m
                             break
+            # Saneamiento anti-duplicación: si prev contiene un timestamp que no pertenece a este slot_i, descartarlo
+            if prev:
+                prev_ts = prev.get("timestamp") or prev.get("update_time") or prev.get("Timestamp")
+                if prev_ts and _is_today(prev_ts):
+                    prev_slot = _slot_for_timestamp(prev_ts)
+                    if prev_slot and prev_slot != slot_i:
+                        prev = {}
             has_prev_val = any(v not in (None, "", " ") for k_v, v in prev.items() if _norm_key(k_v) not in (_norm_key("monitor_name"), _norm_key("hora"))) if prev else False
             for c, h in enumerate(headers, start=1):
                 hn = _norm_key(h)
@@ -1784,6 +1835,20 @@ def _update_report_values_sheet(*, ws, conn_values: sqlite3.Connection | None, s
             if db_row is not None and not _is_db_row_from_today(db_row):
                 db_row = None
             best = db_row
+
+        # Saneamiento anti-duplicación: verificar que best pertenezca estrictamente al slot pedido
+        if best:
+            best_ts = best.get("timestamp") or best.get("update_time") or best.get("Timestamp") or best.get("inserted_at")
+            best_slot = _slot_for_timestamp(best_ts)
+            if best_slot and best_slot != slot:
+                specific = None
+                for ck in (t, mon_name):
+                    if ck:
+                        supa_m = values_slot_telemetry.get((_norm_key(ck), slot))
+                        if supa_m:
+                            specific = supa_m
+                            break
+                best = specific
 
         # buscar fila del slot
         target_r = None
@@ -1950,6 +2015,20 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
     for plant_name, pr, s_map in blocks:
         norm_p = _norm_key(plant_name)
 
+        # Asegurar que el nombre del inversor/planta sea claramente visible en la Columna 1 (Nodo)
+        # Combinando las 4 filas de horarios (Medianoche, Mañana, Mediodía, Tarde) al estilo Shine Monitor
+        if s_map:
+            min_r = min(s_map.values())
+            max_r = max(s_map.values())
+            ws.cell(min_r, 1).value = plant_name
+            try:
+                ws.cell(min_r, 1).font = openpyxl.styles.Font(bold=True, color="12324A")
+                ws.cell(min_r, 1).alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center", wrap_text=True)
+                if max_r > min_r:
+                    ws.merge_cells(start_row=min_r, start_column=1, end_row=max_r, end_column=1)
+            except Exception:
+                pass
+
         # 1. Buscar en SQLite
         matched_t = _match_growatt_plant_to_table(plant_name, raw_tables)
         sqlite_row = None
@@ -2009,6 +2088,17 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
         elif supa_row:
             best_data = supa_row
 
+        # Saneamiento anti-duplicación: verificar que best_data pertenezca estrictamente al slot pedido
+        if best_data:
+            best_ts = best_data.get("update_time") or best_data.get("Timestamp") or best_data.get("timestamp") or best_data.get("inserted_at")
+            if not _is_today(best_ts):
+                best_data = None
+            else:
+                best_slot = _slot_for_timestamp(best_ts)
+                if best_slot and best_slot != slot:
+                    # El dato más reciente es de otro horario; buscar si Supabase tiene uno específico de este turno
+                    best_data = supa_row if (supa_row and _slot_for_timestamp(supa_row.get("update_time")) == slot) else None
+
         # Actualizar cada franja horaria respetando las reglas de slots pasados vs futuros
         for s_name, r_idx in s_map.items():
             if not r_idx:
@@ -2021,6 +2111,14 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
             # Slots futuros: no sobreescribir ni forzar SIN DATOS
             if s_idx > target_idx:
                 continue
+
+            # Saneamiento anti-duplicación: si la celda tiene una marca de tiempo previa que no pertenece a s_name, limpiarla
+            prev_u_time = ws.cell(r_idx, 3).value
+            if prev_u_time and _is_today(prev_u_time):
+                prev_slot = _slot_for_timestamp(prev_u_time)
+                if prev_slot and prev_slot != s_name:
+                    for c_clean in range(3, 11):
+                        ws.cell(r_idx, c_clean).value = None
 
             # Si es el slot actual
             if s_name == slot:
@@ -2711,7 +2809,7 @@ def _has_real_metric_value(val: Any) -> bool:
     invalid = {
         "sin datos", "no_data", "no_table", "no_inverter", "n/a", "none", "null",
         "-", "-v", "-/-v", "-a", "-/-a", "-v/-hz", "-/-hz"
-    }
+    }  # Creado por Luis G.
     if s.lower() in invalid:
         return False
     if s in ("0/0V", "0/0A", "-/-V", "-/-A"):
