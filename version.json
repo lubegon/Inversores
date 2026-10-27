@@ -1,5 +1,5 @@
 {
-  "version": "2.19.1",
-  "release_date": "2026-10-25",
-  "notes": "Correccion de reporte Excel: visibilidad y combinacion del nombre de inversores en columna Nodo de Growatt, y saneamiento estricto anti-duplicacion horaria (Medianoche/Mañana/Mediodia/Tarde) en ShineMonitor y Values."
+  "version": "2.19.2",
+  "release_date": "2026-10-27",
+  "notes": "Correccion critica de Growatt: recuperacion automatica de sesion expirada (re-login), asignacion y deduplicacion precisa de los 9 inversores fisicos por serial en Excel, mapeo de franja horaria tarde (17:00-22:59) y bloqueo de persistencia de telemetria vacia."
 }

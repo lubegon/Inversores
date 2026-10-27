@@ -434,6 +434,23 @@ def main() -> None:
                     home_url = "https://server.growatt.com/index"
                 page.goto(home_url, wait_until="domcontentloaded", timeout=60_000)
 
+                # Verificar si la sesión expiró y redirigió a Login
+                current_url = (page.url or "").lower()
+                login_inputs = page.locator("#val_loginAccount, input[type='password']").count()
+                if "login" in current_url or login_inputs > 0:
+                    log.warn("Sesión expirada o en pantalla de login. Ejecutando login automático...")
+                    try:
+                        from providers.growatt.login import main as login_main
+                        login_main()
+                        page.context.close()
+                        context = browser.new_context(storage_state=str(storage_state_path), ignore_https_errors=True)
+                        page = context.new_page()
+                        page.set_default_timeout(30_000)
+                        page.set_default_navigation_timeout(60_000)
+                        page.goto(home_url, wait_until="domcontentloaded", timeout=60_000)
+                    except Exception as e_relog:
+                        log.warn(f"Reintento de login automático: {e_relog}")
+
                 log.step("Esperando selector superior de plantas")
                 try:
                     page.locator(f"{SEL_TOP_PLANT_SEARCH}, #header_sel_plantstwo, .selectTitle, #index, .layui-layout-admin, body").first.wait_for(state="attached", timeout=30_000)
@@ -504,6 +521,10 @@ def main() -> None:
                         metrics = _extract_metrics_from_embedded_table(page)
                         if not metrics:
                             log.warn("No encontré tabla de métricas (Battery Voltage) en animPan3")
+
+                        if not metrics and not device_serial and not conn_status:
+                            log.warn(f"Planta {idx+1}/{len(plant_names)}: {plant_name} no devolvió datos válidos. Omitiendo guardado de fila vacía.")
+                            continue
 
                         row = _row_from_metrics(
                             update_time=update_time,

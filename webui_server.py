@@ -195,6 +195,8 @@ def _current_slot() -> str:
         return "manana"
     elif 12 <= h < 17:
         return "mediodia"
+    elif 17 <= h < 23:
+        return "tarde"
     return "medianoche"
 
 
@@ -1917,7 +1919,14 @@ def _match_growatt_plant_to_table(plant_name: str, tables: list[str]) -> str | N
     keywords = [w for w in norm_p.split() if len(w) >= 3 and w not in stop_words]
     for t in tables:
         norm_t = _norm_key(t.replace("g_", "").replace("_", " "))
-        score = sum(len(kw) for kw in keywords if kw in norm_t)
+        score = 0
+        for kw in keywords:
+            if kw in norm_t:
+                # Si el keyword es el número de serie (ej. HUEFBJV05N), dar gran prioridad
+                if len(kw) >= 7 and any(c.isdigit() for c in kw):
+                    score += 50
+                else:
+                    score += len(kw)
         if score > best_score:
             best_score = score
             best_t = t
@@ -1941,61 +1950,56 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
         "AC Input Voltage/Frequency", "AC output Voltage Frequency"
     ]
 
-    # Identificar bloques de plantas en la hoja existente
-    blocks: list[tuple[str, int, dict[str, int]]] = []
-    curr_plant = ""
-    curr_plant_cell_row = 0
-    slot_rows: dict[str, int] = {}
+    standard_inverters = [
+        {"name": "Nodo 1er Respaldo Ultimas Noticias HUEFBJV03H", "plant": "Nodo 1er Respaldo Ultimas Noticias", "serial": "HUEFBJV03H"},
+        {"name": "Nodo 1er Respaldo Ultimas Noticias HUEFBJV05N", "plant": "Nodo 1er Respaldo Ultimas Noticias", "serial": "HUEFBJV05N"},
+        {"name": "Nodo Monte Cristo I TSE7A45046", "plant": "Nodo Monte Cristo I", "serial": "TSE7A45046"},
+        {"name": "Nodo Antimano HUEFBJV021", "plant": "Nodo Antimano", "serial": "HUEFBJV021"},
+        {"name": "Nodo Provemed 2do Respald TSE7A4504E", "plant": "Nodo Provemed 2do Respald", "serial": "TSE7A4504E"},
+        {"name": "Nodo Porlamar 2do Respald HUEFBJV006", "plant": "Nodo Porlamar 2do Respald", "serial": "HUEFBJV006"},
+        {"name": "Nodo Casanay HUEFBJV006", "plant": "Nodo Casanay", "serial": "HUEFBJV006"},
+        {"name": "Nodo Casanay TSE7A4502J", "plant": "Nodo Casanay", "serial": "TSE7A4502J"},
+        {"name": "Nodo CC las Vegas Petar HUEFBJV03H", "plant": "Nodo CC las Vegas / Petar", "serial": "HUEFBJV03H"},
+    ]
 
+    # Leer datos ya existentes en la hoja para preservar turnos anteriores de hoy
+    existing_sheet_data: dict[tuple[str, str], dict[int, Any]] = {}
+    last_known_plant = ""
     for r in range(2, ws.max_row + 1):
-        c1 = ws.cell(r, 1).value
-        c2 = ws.cell(r, 2).value
-        c1_str = str(c1).strip() if c1 is not None else ""
-        c2_str = str(c2).strip() if c2 is not None else ""
-        if c1_str and _norm_key(c1_str) not in (_norm_key("nodo"), _norm_key("hora"), _norm_key("none")):
-            if curr_plant:
-                blocks.append((curr_plant, curr_plant_cell_row, slot_rows))
-            curr_plant = c1_str
-            curr_plant_cell_row = r
-            slot_rows = {}
-        cs = _canonical_slot(c2_str)
-        if cs:
-            slot_rows[cs] = r
+        c1_val = ws.cell(r, 1).value
+        c2_val = ws.cell(r, 2).value
+        if c1_val and str(c1_val).strip() and _norm_key(str(c1_val)) not in (_norm_key("nodo"), _norm_key("hora")):
+            last_known_plant = str(c1_val).strip()
+        cs = _canonical_slot(str(c2_val or ""))
+        if cs and last_known_plant:
+            c3_val = ws.cell(r, 3).value
+            if c3_val and _is_today(c3_val):
+                row_vals = {c: ws.cell(r, c).value for c in range(3, 11)}
+                existing_sheet_data[(_norm_key(last_known_plant), cs)] = row_vals
 
-    if curr_plant:
-        blocks.append((curr_plant, curr_plant_cell_row, slot_rows))
+    # Descombinar todas las celdas antes de reestructurar
+    for rng in list(getattr(ws, "merged_cells", []).ranges):
+        try:
+            ws.unmerge_cells(str(rng))
+        except Exception:
+            pass
 
-    # Si la hoja no tenía bloques predefinidos, crear la estructura estándar para los 7 nodos
-    if not blocks:
-        default_plants = [
-            "Nodo 1er Respaldo Últimas Noticias",
-            "Nodo Monte Cristo I",
-            "Nodo Antimano",
-            "Nodo Provemed 2do Respald",
-            "Nodo Porlamar 2do Respald",
-            "Nodo Casanay",
-            "Nodo CC las Vegas / Petar",
-        ]
-        for c_idx, h in enumerate(headers, start=1):
-            cell = ws.cell(1, c_idx)
-            cell.value = h
-            try:
-                cell.font = openpyxl.styles.Font(bold=True)
-            except Exception:
-                pass
+    # Limpiar filas y escribir headers estándar
+    try:
+        if ws.max_row:
+            ws.delete_rows(1, ws.max_row)
+    except Exception:
+        pass
 
-        curr_r = 2
-        for p in default_plants:
-            ws.cell(curr_r, 1).value = p
-            p_slots = {}
-            for i, hl in enumerate(["Medianoche", "Mañana", "Mediodía", "Tarde"]):
-                r_num = curr_r + i + 1
-                ws.cell(r_num, 2).value = hl
-                p_slots[_canonical_slot(hl)] = r_num
-            blocks.append((p, curr_r, p_slots))
-            curr_r += 6
+    for c_idx, h in enumerate(headers, start=1):
+        cell = ws.cell(1, c_idx)
+        cell.value = h
+        try:
+            cell.font = openpyxl.styles.Font(bold=True)
+        except Exception:
+            pass
+    ws.freeze_panes = "A2"
 
-    # Cargar datos de SQLite
     raw_tables = [t for t in _sqlite_tables(conn_growatt) if t.startswith("g_")] if conn_growatt else []
 
     # Cargar datos de caché local growatt-dashboard.json
@@ -2012,25 +2016,34 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
     growatt_slot_telemetry = _fetch_supabase_telemetry_by_slot_map("growatt")
     growatt_telemetry = _fetch_supabase_telemetry_map("growatt")
 
-    for plant_name, pr, s_map in blocks:
-        norm_p = _norm_key(plant_name)
+    curr_r = 2
+    for inv in standard_inverters:
+        plant_display_name = inv["name"]
+        plant_base_name = inv["plant"]
+        serial_code = inv["serial"]
+        norm_disp = _norm_key(plant_display_name)
+        norm_ser = _norm_key(serial_code)
+        min_r = curr_r
+        max_r = curr_r + 3
 
-        # Asegurar que el nombre del inversor/planta sea claramente visible en la Columna 1 (Nodo)
-        # Combinando las 4 filas de horarios (Medianoche, Mañana, Mediodía, Tarde) al estilo Shine Monitor
-        if s_map:
-            min_r = min(s_map.values())
-            max_r = max(s_map.values())
-            ws.cell(min_r, 1).value = plant_name
-            try:
-                ws.cell(min_r, 1).font = openpyxl.styles.Font(bold=True, color="12324A")
-                ws.cell(min_r, 1).alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center", wrap_text=True)
-                if max_r > min_r:
-                    ws.merge_cells(start_row=min_r, start_column=1, end_row=max_r, end_column=1)
-            except Exception:
-                pass
+        # Formatear Columna 1 (Nodo) combinada verticalmente en las 4 filas del turno
+        ws.cell(min_r, 1).value = plant_display_name
+        try:
+            ws.cell(min_r, 1).font = openpyxl.styles.Font(bold=True, color="12324A")
+            ws.cell(min_r, 1).alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.merge_cells(start_row=min_r, start_column=1, end_row=max_r, end_column=1)
+        except Exception:
+            pass
+
+        # Identificar filas de horario
+        slot_rows: dict[str, int] = {}
+        for i, hl in enumerate(["Medianoche", "Mañana", "Mediodía", "Tarde"]):
+            r_num = min_r + i
+            ws.cell(r_num, 2).value = hl
+            slot_rows[_canonical_slot(hl)] = r_num
 
         # 1. Buscar en SQLite
-        matched_t = _match_growatt_plant_to_table(plant_name, raw_tables)
+        matched_t = _match_growatt_plant_to_table(plant_display_name, raw_tables)
         sqlite_row = None
         if matched_t and conn_growatt:
             try:
@@ -2044,8 +2057,9 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
         # 2. Buscar en caché local
         cache_row = None
         for res in local_cache_results:
-            r_pname = str(res.get("plant_name") or "")
-            if _norm_key(r_pname) == norm_p or (norm_p and _norm_key(r_pname) in norm_p) or (r_pname and norm_p in _norm_key(r_pname)):
+            r_pname = _norm_key(str(res.get("plant_name") or ""))
+            r_serial = _norm_key(str(res.get("device_serial") or ""))
+            if (norm_ser and r_serial == norm_ser) or (r_pname and (r_pname in norm_disp or norm_disp in r_pname) and (not norm_ser or not r_serial or r_serial == norm_ser)):
                 m_dict = dict(res.get("metrics") or {})
                 m_row = dict(res.get("row") or {})
                 panel = dict(res.get("panel_device") or {})
@@ -2063,9 +2077,16 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
 
         # 3. Buscar en Supabase
         supa_row = None
-        for cand_k in (plant_name, matched_t, norm_p):
-            if cand_k:
-                nk = _norm_key(str(cand_k))
+        search_keys = [
+            norm_disp,
+            norm_ser,
+            matched_t,
+            f"{plant_base_name} {serial_code}",
+            _norm_key(plant_base_name),
+        ]
+        for ck in search_keys:
+            if ck:
+                nk = _norm_key(str(ck))
                 if (nk, slot) in growatt_slot_telemetry:
                     supa_row = growatt_slot_telemetry[(nk, slot)]
                     break
@@ -2096,11 +2117,10 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
             else:
                 best_slot = _slot_for_timestamp(best_ts)
                 if best_slot and best_slot != slot:
-                    # El dato más reciente es de otro horario; buscar si Supabase tiene uno específico de este turno
                     best_data = supa_row if (supa_row and _slot_for_timestamp(supa_row.get("update_time")) == slot) else None
 
         # Actualizar cada franja horaria respetando las reglas de slots pasados vs futuros
-        for s_name, r_idx in s_map.items():
+        for s_name, r_idx in slot_rows.items():
             if not r_idx:
                 continue
             try:
@@ -2112,15 +2132,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
             if s_idx > target_idx:
                 continue
 
-            # Saneamiento anti-duplicación: si la celda tiene una marca de tiempo previa que no pertenece a s_name, limpiarla
-            prev_u_time = ws.cell(r_idx, 3).value
-            if prev_u_time and _is_today(prev_u_time):
-                prev_slot = _slot_for_timestamp(prev_u_time)
-                if prev_slot and prev_slot != s_name:
-                    for c_clean in range(3, 11):
-                        ws.cell(r_idx, c_clean).value = None
-
-            # Si es el slot actual
+            # Si es el slot actual solicitado
             if s_name == slot:
                 if best_data:
                     u_time = str(best_data.get("update_time") or best_data.get("Timestamp") or best_data.get("timestamp") or best_data.get("inserted_at") or "")
@@ -2143,14 +2155,18 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
 
                     _apply_row_fill_if_offgrid(ws, r_idx, len(headers), conn_st)
                 else:
-                    existing_c3 = ws.cell(r_idx, 3).value
-                    if not existing_c3:
-                        ws.cell(r_idx, 3).value = "SIN DATOS"
-            else:
-                # Slot anterior: si la celda está vacía, marcar SIN DATOS
-                existing_c3 = ws.cell(r_idx, 3).value
-                if existing_c3 is None or str(existing_c3).strip() == "":
                     ws.cell(r_idx, 3).value = "SIN DATOS"
+            else:
+                # Slot anterior: restaurar si existía lectura válida de hoy
+                prev_saved = existing_sheet_data.get((norm_disp, s_name))
+                if prev_saved and prev_saved.get(3):
+                    for col_k, col_v in prev_saved.items():
+                        ws.cell(r_idx, col_k).value = col_v
+                else:
+                    ws.cell(r_idx, 3).value = "SIN DATOS"
+
+        # Fila separadora entre inversores
+        curr_r += 5
 
 
 def _pick_best_value(row: dict[str, Any], header: str, provider: str) -> Any:
@@ -2360,8 +2376,9 @@ def _generate_or_update_report(*, slot: str) -> Path:
             _update_report_values_sheet(ws=wb["Values"], conn_values=conn_values, slot=slot)
 
         # Growatt: llenar basado en Supabase o BD
-        if "Growhatt" in wb.sheetnames:
-            _update_report_growatt_sheet(ws=wb["Growhatt"], conn_growatt=conn_growatt, slot=slot)
+        gw_sheet = next((wb[s] for s in wb.sheetnames if s.strip().lower() in ("growhatt", "growatt")), None)
+        if gw_sheet is not None:
+            _update_report_growatt_sheet(ws=gw_sheet, conn_growatt=conn_growatt, slot=slot)
 
         # Auditoría de Excel y BD: deduplicar y purgar inversores repetidos o sin data
         for sh_name in list(wb.sheetnames):
@@ -2877,11 +2894,14 @@ def _audit_and_purge_excel_sheet(ws, purge_no_data: bool = True) -> None:
         b["has_data"] = valid_cnt > 0
 
     total_with_data = sum(1 for b in blocks if b["has_data"])
+    is_growatt_sheet = str(getattr(ws, "title", "")).lower() in ("growhatt", "growatt")
 
     # 2. Deduplicación por norm_base (eliminar inversores repetidos)
     by_base: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for b in blocks:
-        by_base[b["norm_base"]].append(b)
+        # En Growatt cada inversor físico con serial distinto es independiente
+        grp_key = _norm_key(b["plant"]) if is_growatt_sheet else b["norm_base"]
+        by_base[grp_key].append(b)
 
     rows_to_delete: set[int] = set()
 
@@ -2904,7 +2924,6 @@ def _audit_and_purge_excel_sheet(ws, purge_no_data: bool = True) -> None:
     core_protected = {
         "ultimas noticias", "monte cristo", "antimano", "provemed", "porlamar", "casanay", "vegas", "petar"
     }
-    is_growatt_sheet = str(getattr(ws, "title", "")).lower() in ("growhatt", "growatt")
     if purge_no_data and total_with_data > 0:
         for b in blocks:
             # Creado por Luis G.
