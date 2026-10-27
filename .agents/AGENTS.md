@@ -97,6 +97,8 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
    - NUNCA filtrar la lista de plantas o inversores permitidos contra `plant_name` (no aplicar filtros erróneos que descarten las plantas del dashboard).
    - Usar `wait_until="domcontentloaded"` en lugar de `networkidle` para evitar cuelgues causados por polling continuo.
    - Verificar la renderización en el DOM esperando que el elemento de texto de la planta coincida antes de extraer voltajes.
+   - **Auto-recuperación de sesión expirada**: Si el portal redirige a `/login` o se detecta `#val_loginAccount`, invocar automáticamente `login_main()`, regenerar el contexto de navegación y reintentar la captura sin requerir intervención manual.
+   - **Guardián de Integridad de Telemetría**: Si un inversor no contiene métricas de voltaje, número de serie ni estatus operativo, se debe omitir su inserción en SQLite y su subida a Supabase para evitar registros vacíos o corruptos con fecha actual artificial.
 2. **ShineMonitor (`providers/shinemonitor/scrape_voltage.py`)**:
    - Timeouts tolerantes de 30s (`SHINE_DEFAULT_TIMEOUT_MS`) y 60s (`SHINE_NAV_TIMEOUT_MS`).
    - Apertura de pestaña *Data Details* con reintentos automáticos.
@@ -118,13 +120,26 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
   - La sincronización hacia Supabase (`telemetry_readings`) se realiza en un lote consolidado (`batch_save_telemetry_readings`) en segundo plano o post-ciclo, minimizando el número de transacciones HTTP y el tiempo total de ejecución.
 
 ## Reglas del Generador de Reportes Excel
-1. **Growatt (Columna Nodo):**
-   - El nombre de la planta debe asignarse de forma obligatoria en la columna 1 (`ws.cell(min_r, 1).value = plant_name`) y combinarse verticalmente en las 4 filas del turno (`ws.merge_cells(start_row=min_r, end_row=max_r, start_column=1, end_column=1)`) con formato centrado y negrita, garantizando que los inversores nunca queden con la celda vacía o invisible.
-2. **Anti-Duplicación Horaria Estricta:**
-   - Todo dato asignado a un turno (`Medianoche`, `Mañana`, `Mediodía`, `Tarde`) en cualquier proveedor debe validarse contra su franja horaria (`_slot_for_timestamp`):
+1. **Growatt (9 Inversores Canónicos y Deduplicación Estricta):**
+   - El nombre de la planta debe asignarse de forma obligatoria en la columna 1 (`ws.cell(min_r, 1).value = plant_name`) y combinarse verticalmente en las 4 filas del turno (`ws.merge_cells(start_row=min_r, end_row=max_r, start_column=1, end_column=1)`) con formato centrado y negrita.
+   - La hoja contiene exactamente 9 bloques canónicos:
+     1. `Nodo 1er Respaldo Ultimas Noticias HUEFBJV03H`
+     2. `Nodo 1er Respaldo Ultimas Noticias HUEFBJV05N`
+     3. `Nodo Monte Cristo I TSE7A45046`
+     4. `Nodo Antimano HUEFBJV021`
+     5. `Nodo Provemed 2do Respald TSE7A4504E`
+     6. `Nodo Porlamar 2do Respald HUEFBJV006`
+     7. `Nodo Casanay HUEFBJV006`
+     8. `Nodo Casanay TSE7A4502J`
+     9. `Nodo CC las Vegas Petar HUEFBJV03H`
+   - **Matching Ponderado por Serial (+50 pts)**: En plantas multi-inversor (Últimas Noticias, Casanay), `_match_growatt_plant_to_table()` debe priorizar la coincidencia exacta de número de serie sobre el nombre textual base.
+   - **Auditoría de Duplicados Segura**: En `_audit_and_purge_excel_sheet()`, no se deben agrupar ni purgar bloques que compartan nombre base si poseen números de serie distintos.
+   - **Preservación Acumulativa de Turnos**: Al generar un nuevo turno, se deben mantener intactas las lecturas válidas previas del mismo día (ej. Mediodía se conserva al generar Tarde).
+2. **Anti-Duplicación y Franjas Horarias Estrictas:**
+   - La función de slot actual `_current_slot()` y la validación `_slot_for_timestamp()` deben cubrir sin excepción:
      - `05:00 - 11:59` -> Mañana
      - `12:00 - 16:59` -> Mediodía
-     - `17:00 - 22:59` -> Tarde
+     - `17:00 - 22:59` -> Tarde (OBLIGATORIO en `_current_slot`, nunca desviar a medianoche)
      - `23:00 - 04:59` -> Medianoche
    - Si una lectura previa o capturada pertenece a un turno distinto (ej. lectura de la mañana apareciendo en la fila de la tarde), se descarta y se restablece a `SIN DATOS` para evitar falsos positivos de duplicación.
 3. **Compatibilidad con Python 3.10:**
