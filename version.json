@@ -1,5 +1,5 @@
 {
-  "version": "2.19.3",
+  "version": "2.19.4",
   "release_date": "2026-10-28",
-  "notes": "Reparacion integral de Growatt, SQLite y Logs: re-login in-place sin colision de bucle asyncio en Playwright, eliminacion de falso positivo 'Welcome' en login, hidratacion activa de animPan3 con soporte multi-inversor, modo append atomico en system_logger, deduplicacion de lotes Supabase y timeouts WAL/busy_timeout en SQLite."
+  "notes": "Sincronizacion del Status Grid y Operatividad de Growatt: correccion de expresion regular de insercion SQLite en vivo, lectura directa desde growatt-dashboard.json para pintar barras en verde (OK) y filtrado de tablas huerfanas antiguas en el calculo de operatividad."
 }

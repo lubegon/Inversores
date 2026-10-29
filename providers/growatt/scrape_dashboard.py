@@ -594,7 +594,7 @@ def main() -> None:
                             ensure_monitor_table(conn, table_name=table_name)
                             insert_monitor_row(conn, table_name=table_name, row=row.as_list())
                             conn.commit()
-                            log.ok(f"Planta {idx+1}/{len(plant_names)}: SQLite insertado en {table_name}")
+                            log.ok(f"SQLite: insertado en {table_name} (Planta {idx+1}/{len(plant_names)})")
 
                             # Acumular registros para subida remota a Supabase al finalizar todo el scraping
                             dev_key = dev_serial or table_name

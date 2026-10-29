@@ -2976,8 +2976,8 @@ _re_sm_plant = re.compile(r"\bPlant\s+(\d+)\b", re.IGNORECASE)
 _re_sm_fail = re.compile(r"\b(NO_TABLE|NO_TAB|NO_DATA|NO_DATA_TODAY)\b|Sin\s+datos\s+hoy", re.IGNORECASE)
 
 _re_gw_plant = re.compile(r"\bPlanta\s+(\d+)\s*/\s*(\d+)\b", re.IGNORECASE)
-_re_gw_ok = re.compile(r"\bOK:\s*SQLite:\s*insertado\b|\[OK\]", re.IGNORECASE)
-_re_gw_err = re.compile(r"\b(ERROR|EXCEPTION|Traceback)\b", re.IGNORECASE)
+_re_gw_ok = re.compile(r"SQLite[:\s]+insertado|\bOK:\s*(?:Planta\s+\d+\s*/\s*\d+\s*:\s*)?SQLite|\[OK\]", re.IGNORECASE)
+_re_gw_err = re.compile(r"\b(ERROR|EXCEPTION|Traceback)\b|no\s+devolvi[oó]\s+datos\s+v[aá]lidos", re.IGNORECASE)
 
 _re_vals_item = re.compile(r"^\[(\d+)\s*/\s*(\d+)\]", re.IGNORECASE)
 _re_vals_ok = re.compile(r"Dato enviado correctamente a la Base de datos", re.IGNORECASE)
@@ -3142,13 +3142,13 @@ def _grid_targets_from_storage(provider: str) -> list[str]:
 
     try:
         if provider == "growatt":
-            path = STORAGE_DIR / "growatt-plants.json"
+            path = STORAGE_DIR / "growatt-dashboard.json"
             if not path.exists():
-                path = STORAGE_DIR / "growatt-dashboard.json"
+                path = STORAGE_DIR / "growatt-plants.json"
                 if not path.exists():
                     return []
             data = json.loads(path.read_text(encoding="utf-8", errors="ignore") or "{}")
-            plants = data.get("dropdown_plants") or data.get("visited") or data.get("plants") or []
+            plants = data.get("plants") or data.get("dropdown_plants") or data.get("visited") or []
             n = len(plants) if isinstance(plants, list) else 0
             return [str(i) for i in range(1, n + 1)]
 
@@ -3190,13 +3190,13 @@ def _grid_target_names_from_storage(provider: str) -> dict[str, str]:
     out: dict[str, str] = {}
     try:
         if provider == "growatt":
-            path = STORAGE_DIR / "growatt-plants.json"
+            path = STORAGE_DIR / "growatt-dashboard.json"
             if not path.exists():
-                path = STORAGE_DIR / "growatt-dashboard.json"
+                path = STORAGE_DIR / "growatt-plants.json"
                 if not path.exists():
                     return {}
             data = json.loads(path.read_text(encoding="utf-8", errors="ignore") or "{}")
-            plants = data.get("dropdown_plants") or data.get("visited") or data.get("plants") or []
+            plants = data.get("plants") or data.get("dropdown_plants") or data.get("visited") or []
             if not isinstance(plants, list):
                 return {}
             for i, p in enumerate(plants, start=1):
@@ -4156,8 +4156,39 @@ def _metrics() -> dict[str, Any]:
         try:
             conn = _sqlite_open_by_name("Voltage Growatt.sqlite")
             try:
-                tables = [t for t in _sqlite_tables(conn) if t.startswith("g_")]
-                providers["growatt"]["device_count"] = len(tables)
+                all_g_tables = [t for t in _sqlite_tables(conn) if t.startswith("g_")]
+                # Filtrar tablas activas contra growatt-dashboard.json si existe para no inflar el divisor con tablas huérfanas antiguas
+                active_g_tables = list(all_g_tables)
+                dash_ok_count = 0
+                dash_total_count = 0
+                try:
+                    dash_p = STORAGE_DIR / "growatt-dashboard.json"
+                    if dash_p.exists():
+                        dash_obj = json.loads(dash_p.read_text(encoding="utf-8", errors="ignore") or "{}")
+                        dash_plants = dash_obj.get("plants") or []
+                        dash_res = dash_obj.get("results") or []
+                        if isinstance(dash_plants, list) and dash_plants:
+                            dash_total_count = len(dash_plants)
+                        if isinstance(dash_res, list) and dash_res:
+                            ok_idx = {r.get("index") for r in dash_res if isinstance(r, dict) and r.get("index") is not None}
+                            dash_ok_count = len(ok_idx)
+                            from providers.growatt.voltage_sqlite import monitor_table_name
+                            expected_names = set()
+                            for r in dash_res:
+                                if isinstance(r, dict):
+                                    p_nm = str(r.get("plant_name") or "").strip()
+                                    d_sr = str(r.get("device_serial") or "").strip()
+                                    if p_nm:
+                                        expected_names.add(monitor_table_name(f"{p_nm}__{d_sr}" if d_sr else p_nm))
+                                        expected_names.add(monitor_table_name(p_nm))
+                            matched = [t for t in all_g_tables if t in expected_names]
+                            if matched:
+                                active_g_tables = matched
+                except Exception:
+                    pass
+
+                tables = active_g_tables
+                providers["growatt"]["device_count"] = dash_total_count or len(tables)
 
                 started_at = _job_status("growatt").get("started_at")
                 providers["growatt"]["operativity_started_at"] = started_at
@@ -4165,7 +4196,11 @@ def _metrics() -> dict[str, Any]:
                     j = _jobs.get("growatt")
                     baseline = j.baseline_max_id if j else None
 
-                if baseline is not None and tables:
+                if dash_total_count > 0 and dash_ok_count > 0:
+                    providers["growatt"]["operativity_ok"] = dash_ok_count
+                    providers["growatt"]["operativity_total"] = dash_total_count
+                    providers["growatt"]["operativity_pct"] = int(round((dash_ok_count / dash_total_count) * 100))
+                elif baseline is not None and tables:
                     ok = 0
                     total = len(tables)
                     for t in tables:
@@ -4549,6 +4584,19 @@ def _normalize_cached_grid(
             except Exception:
                 continue
 
+    if provider == "growatt" and (not status_map or not any(v == "ok" for v in status_map.values())):
+        try:
+            dash_path = STORAGE_DIR / "growatt-dashboard.json"
+            if dash_path.exists():
+                dash_data = json.loads(dash_path.read_text(encoding="utf-8", errors="ignore") or "{}")
+                dash_results = dash_data.get("results") or []
+                if isinstance(dash_results, list) and dash_results:
+                    ok_indices = {str(int(r.get("index")) + 1) for r in dash_results if isinstance(r, dict) and r.get("index") is not None}
+                    for t in targets:
+                        status_map[t] = "ok" if t in ok_indices else "fail"
+        except Exception:
+            pass
+
     name_map = _grid_target_names_from_storage(provider)
     items = [
         {"plant_id": t, "name": (name_map.get(t) or ""), "status": status_map.get(t, "pending")}
@@ -4850,6 +4898,17 @@ def _finalize_run(provider: str, job: Job) -> None:
             # Cerrar último target si quedó en retry.
             if job.grid_current and (job.grid_status.get(job.grid_current) == "retry"):
                 job.grid_status[job.grid_current] = "fail"
+            if provider == "growatt":
+                try:
+                    dash_path = STORAGE_DIR / "growatt-dashboard.json"
+                    if dash_path.exists():
+                        dash_data = json.loads(dash_path.read_text(encoding="utf-8", errors="ignore") or "{}")
+                        dash_results = dash_data.get("results") or []
+                        for r in dash_results:
+                            if isinstance(r, dict) and r.get("index") is not None:
+                                job.grid_status[str(int(r.get("index")) + 1)] = "ok"
+                except Exception:
+                    pass
             # Convertir solo pending/retry a fail en cierre (preservando OK).
             for t in targets:
                 stt = (job.grid_status.get(t) or "pending").strip()
