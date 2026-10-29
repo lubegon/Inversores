@@ -1,7 +1,7 @@
 # Reglas del Proyecto - Sistema de Inversores
 
-## Control de Versiones u Sincronización Obligatoria
-- Cada vez que se realice un cambio o corrección en el código o configuración del sistema (incluso si es mínimo) que requiera que los usuarios o PCs descarguen o actualicen la carpeta del proyecto, **se DEBE incrementar el número de versión en `version.json`** (por ejemplo: de `2.0.0` a `2.0.1` o `2.1.0`).
+## Control de Versiones y Sincronización Obligatoria
+- Cada vez que se realice un cambio o corrección en el código o configuración del sistema (incluso si es mínimo) que requiera que los usuarios o PCs descarguen o actualicen la carpeta del proyecto, **se DEBE incrementar el número de versión en `version.json`** (por ejemplo: de `2.19.3` a `2.19.4`).
 - **Sincronización de carpetas locales:** Se deben guardar y copiar todos los archivos modificados en todas las carpetas del proyecto, asegurando que la carpeta portable `Captura_Inversores_Deploy/` quede 100% sincronizada con la raíz (incluyendo `version.json`, `providers/`, `webui/`, etc.).
 - **Despliegue Obligatorio a GitHub:** Al finalizar cualquier corrección o cambio, **se DEBE realizar `git commit` y `git push` a GitHub** (rama `main`). Esto garantizará que el verificador automático de versión (`providers/version_checker.py`) detecte la nueva versión remota y notifique de inmediato con la ventana emergente Pop-Up a cualquier PC que tenga una versión anterior para que descargue la actualización.
 
@@ -49,7 +49,7 @@ El sistema utiliza Supabase PostgreSQL como base de datos remota para sincroniza
 5. **Storage Bucket**: `'reports'` (Archivos Excel/CSV de reportes generados).
 
 ### Uso del Cliente Supabase en Python:
-Utilizar siempre `from providers.supabase_client import save_telemetry_reading, save_plant, save_device, save_plant_event, get_supabase`.
+Utilizar siempre `from providers.supabase_client import save_telemetry_reading, save_telemetry_readings_batch, save_plant, save_device, save_plant_event, get_supabase`.
 
 ## Agent Skills de Diseño y Maquetación Web
 1. **Skill de Traducción Visual (Framer / Figma a Código):**
@@ -93,12 +93,14 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
   - La ruta de navegadores de Playwright debe apuntar a la carpeta local: `set "PLAYWRIGHT_BROWSERS_PATH=%~dp0playwright_browsers"`.
 
 ## Directrices de Motores de Scraping y Reportes
-1. **Growatt (`providers/growatt/scrape_dashboard.py`)**:
+1. **Growatt (`providers/growatt/login.py` y `providers/growatt/scrape_dashboard.py`)**:
    - NUNCA filtrar la lista de plantas o inversores permitidos contra `plant_name` (no aplicar filtros erróneos que descarten las plantas del dashboard).
-   - Usar `wait_until="domcontentloaded"` en lugar de `networkidle` para evitar cuelgues causados por polling continuo.
-   - Verificar la renderización en el DOM esperando que el elemento de texto de la planta coincida antes de extraer voltajes.
-   - **Auto-recuperación de sesión expirada**: Si el portal redirige a `/login` o se detecta `#val_loginAccount`, invocar automáticamente `login_main()`, regenerar el contexto de navegación y reintentar la captura sin requerir intervención manual.
+   - Usar `wait_until="domcontentloaded"` en lugar de `networkidle` para evitar cuelgues causados por polling continuo, y apuntar `DEFAULT_HOME_URL` a `https://server.growatt.com/index`.
+   - **Prohibido usar `'Welcome'` como indicador de login exitoso en `login.py`**: El propio formulario `/login` de Growatt contiene la palabra `"Welcome"`, lo que generaba un falso positivo que guardaba `storage/growatt.json` antes de autenticar. Se debe verificar la salida de `/login`, que `#val_loginAccount` no esté visible y que existan selectores reales del dashboard (`#top_plant_search`, `#header_sel_plantstwo`, `#panel_device`, `#tb_device_con`).
+   - **Auto-recuperación de sesión *In-Place* (Sin colisión de bucle `asyncio`)**: Dentro del bloque `with sync_playwright() as p:` de `scrape_dashboard.py`, **NUNCA** invocar `login_main()` (ya que abre un segundo `sync_playwright()` y colapsa con `Playwright Sync API inside the asyncio loop`). Usar siempre `perform_login_on_page(page, context, base_dir, log)` reutilizando la página activa, y evaluar `_is_login_screen(page)` comprobando visibilidad real de `#val_loginAccount` (para ignorar inputs `<input type="password">` ocultos del modal de cambio de contraseña en `/index`).
+   - **Soporte Multi-Inversor y Hidratación Activa de `animPan3`**: Extraer todos los `.deviceBox` presentes en `#tb_device_con` (`_extract_panel_devices`) para capturar todos los inversores de plantas multi-equipo (ej. `Nodo Monte Cristo I`, `Últimas Noticias`, `Casanay`) con timeouts acotados (~12s) y reintentos activos de hover/click sobre `div.animPan.animPan3`.
    - **Guardián de Integridad de Telemetría**: Si un inversor no contiene métricas de voltaje, número de serie ni estatus operativo, se debe omitir su inserción en SQLite y su subida a Supabase para evitar registros vacíos o corruptos con fecha actual artificial.
+   - **Status Grid y Operatividad Real en `webui_server.py`**: El log de inserción debe emitir `OK: SQLite: insertado en <tabla> (Planta X/Y)` compatible con `_re_gw_ok`, y tanto `_status_grid("growatt")` como `_metrics()` deben respaldarse en `storage/growatt-dashboard.json` para pintar en verde (`ok`) las plantas capturadas y calcular la operatividad sobre las plantas/tablas activas sin inflar el divisor con tablas `g_*` históricas huérfanas.
 2. **ShineMonitor (`providers/shinemonitor/scrape_voltage.py`)**:
    - Timeouts tolerantes de 30s (`SHINE_DEFAULT_TIMEOUT_MS`) y 60s (`SHINE_NAV_TIMEOUT_MS`).
    - Apertura de pestaña *Data Details* con reintentos automáticos.
@@ -110,14 +112,18 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
 4. **Reportes y Exportación PDF**:
    - Para generar reportes PDF en PCs sin derechos de administrador, utilizar la vista web `/report-view` con estilos `@media print` apaisados y `window.print()`, permitiendo exportar mediante "Microsoft Print to PDF" o el motor nativo de Edge sin necesidad de instalar drivers virtuales.
 
-## Arquitectura de Flujo Desacoplado (Diagrama Operativo)
+## Arquitectura de Flujo Desacoplado, Concurrencia SQLite y Logs Atómicos
 - **Scraping Completo Aislado (Sin Bloqueos de Red):**
   - El scraping de todos los inversores y proveedores (Growatt, ShineMonitor, Values) debe completarse en su totalidad a nivel local y en memoria/SQLite ANTES de cualquier sincronización remota con Supabase.
-  - Prohibido hacer peticiones HTTP hacia Supabase entre un inversor y otro durante el ciclo de captura.
-- **Guardado Local Inmediato:**
-  - Al culminar la recolección, se actualiza de inmediato el archivo Excel local y la base de datos SQLite local para que el operador cuente con sus datos sin demoras.
+  - Prohibido hacer peticiones HTTP hacia Supabase entre un inversor y otro durante el ciclo de captura (incluyendo dentro de `insert_monitor_row` en `voltage_sqlite.py`).
+- **Concurrencia en Base de Datos SQLite (`WAL` + `busy_timeout`):**
+  - Todas las conexiones de escritura a SQLite deben configurar `timeout=30.0`, `check_same_thread=False`, `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=NORMAL` y `PRAGMA busy_timeout=30000`.
+  - Las conexiones de lectura (`mode=ro` en `webui_server.py`) deben usar `timeout=15.0` y `PRAGMA busy_timeout=15000` para evitar fallos silenciosos durante commits concurrentes.
+- **Logging Multi-Proceso Atómico (`mode="a"`) y Control de Reporte Único (`WEBUI_MANAGED_JOB`):**
+  - En `providers/system_logger.py`, `FileHandler` sobre `system_session.log` e `system_history.log` debe usar siempre `mode="a"` (append atómico del sistema operativo) para impedir que subprocesos concurrentes trunquen el archivo o sobrescriban bytes a mitad de línea.
+  - Cuando `webui_server.py` inicia un trabajo en `_start_job()`, inyecta `WEBUI_MANAGED_JOB=1` en el entorno del subproceso para que la actualización de `Reporte Voltguard.xlsx` y su subida a Supabase ocurran una única vez al finalizar dentro de `_finalize_run()` protegido por `_report_lock`.
 - **Subida Masiva por Lotes (Batch) a Supabase:**
-  - La sincronización hacia Supabase (`telemetry_readings`) se realiza en un lote consolidado (`batch_save_telemetry_readings`) en segundo plano o post-ciclo, minimizando el número de transacciones HTTP y el tiempo total de ejecución.
+  - La sincronización hacia Supabase (`telemetry_readings`) se realiza en un lote consolidado (`save_telemetry_readings_batch`) post-ciclo con deduplicación previa por `(provider, device_key, update_time)`, minimizando el número de transacciones HTTP y el tiempo total de ejecución.
 
 ## Reglas del Generador de Reportes Excel
 1. **Growatt (9 Inversores Canónicos y Deduplicación Estricta):**
@@ -132,7 +138,7 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
      7. `Nodo Casanay HUEFBJV006`
      8. `Nodo Casanay TSE7A4502J`
      9. `Nodo CC las Vegas Petar HUEFBJV03H`
-   - **Matching Ponderado por Serial (+50 pts)**: En plantas multi-inversor (Últimas Noticias, Casanay), `_match_growatt_plant_to_table()` debe priorizar la coincidencia exacta de número de serie sobre el nombre textual base.
+   - **Matching Ponderado por Serial (+50 pts)**: En plantas multi-inversor (Últimas Noticias, Casanay, Monte Cristo I), `_match_growatt_plant_to_table()` debe priorizar la coincidencia exacta de número de serie sobre el nombre textual base.
    - **Auditoría de Duplicados Segura**: En `_audit_and_purge_excel_sheet()`, no se deben agrupar ni purgar bloques que compartan nombre base si poseen números de serie distintos.
    - **Preservación Acumulativa de Turnos**: Al generar un nuevo turno, se deben mantener intactas las lecturas válidas previas del mismo día (ej. Mediodía se conserva al generar Tarde).
 2. **Anti-Duplicación y Franjas Horarias Estrictas:**
@@ -155,5 +161,3 @@ Utilizar siempre `from providers.supabase_client import save_telemetry_reading, 
 ## Ejecución Autónoma y Prioridad de Agent Skills / MCP
 - **Prioridad de Acción Inmediata:** Los Agent Skills y servidores MCP configurados (`visual-translation`, `visual-inspector`, `design-system-guardian`, `android-dev-automation`, `desktop-e2e-automation`) **DEBEN ser los primeros en actuar de manera autónoma**.
 - **Sin Espera ni Confirmación:** El agente debe activar y ejecutar estos skills o herramientas MCP de forma inmediata al detectar tareas de diseño, maquetación, inspección visual, pruebas en Android (ADB) o testing E2E en PC, **sin preguntar previa o explícitamente al usuario ni esperar instrucciones adicionales**.
-
-
