@@ -25,15 +25,19 @@ GROWATT_COLUMNS: list[str] = [
     "inserted_at",
 ]
 
+# Creado por Luis G.
+
 
 def db_path(base_dir: Path) -> Path:
     return base_dir / DB_FILENAME
 
 
 def connect_db(base_dir: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path(base_dir)))
+    conn = sqlite3.connect(str(db_path(base_dir)), timeout=30.0, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -103,39 +107,9 @@ def insert_monitor_row(conn: sqlite3.Connection, *, table_name: str, row: Iterab
         f'INSERT INTO "{table_name}" ({columns_sql}) VALUES ({placeholders})',
         values,
     )
-
-    # Ingesta hacia Supabase (si está configurado)
-    try:
-        from providers.supabase_client import get_supabase
-
-        sb = get_supabase()
-        if sb.is_enabled():
-            metrics = {
-                "battery_voltage": values[2],
-                "pv1_pv2_voltage": values[3],
-                "pv1_pv2_recharging_current": values[4],
-                "total_charge_current": values[5],
-                "ac_input_voltage_frequency": values[6],
-                "ac_output_voltage_frequency": values[7],
-                "table_name": table_name,
-                "Battery Voltage": values[2],
-                "PV1/PV2 Voltage": values[3],
-                "PV1/PV2 Recharging Current": values[4],
-                "Total Charge Current": values[5],
-                "AC Input Voltage/Frequency": values[6],
-                "AC Output Voltage/Frequency": values[7],
-            }
-            sb.save_device("growatt", "growatt_main", table_name, device_name=table_name)
-            sb.save_telemetry_reading(
-                provider="growatt",
-                device_key=table_name,
-                update_time=values[0],
-                status=values[1],
-                metrics=metrics,
-                inserted_at=values[8] if len(values) > 8 else None,
-            )
-    except Exception:
-        pass
+    # NOTA: La sincronización con Supabase se ejecuta en lote consolidado
+    # (save_telemetry_readings_batch) al finalizar el scraping completo,
+    # respetando la Arquitectura de Flujo Desacoplado sin bloqueos de red entre inversores.
 
 
 @dataclass(frozen=True)

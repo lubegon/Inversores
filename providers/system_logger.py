@@ -24,10 +24,11 @@ class SystemLogger:
 
     def __init__(self) -> None:
         STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+# Creado por Luis G.
         self.logger = logging.getLogger("system_logger")
         self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False
 
         if not self.logger.handlers:
             formatter = logging.Formatter(
@@ -35,17 +36,20 @@ class SystemLogger:
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
 
-            s_handler = logging.FileHandler(SESSION_LOG_PATH, mode="w", encoding="utf-8")
+            # IMPORTANTE: usar mode="a" (append atómico del SO) para evitar que subprocesos
+            # (growatt, shinemonitor, values) trunquen o mezclen bytes a mitad de línea.
+            s_handler = logging.FileHandler(SESSION_LOG_PATH, mode="a", encoding="utf-8")
             s_handler.setFormatter(formatter)
             self.logger.addHandler(s_handler)
 
-            h_handler = logging.FileHandler(HISTORY_LOG_PATH, encoding="utf-8")
+            h_handler = logging.FileHandler(HISTORY_LOG_PATH, mode="a", encoding="utf-8")
             h_handler.setFormatter(formatter)
             self.logger.addHandler(h_handler)
 
-            c_handler = logging.StreamHandler(sys.stdout)
-            c_handler.setFormatter(formatter)
-            self.logger.addHandler(c_handler)
+            if os.getenv("SYSTEM_LOG_STDOUT", "0").strip().lower() in {"1", "true", "yes"}:
+                c_handler = logging.StreamHandler(sys.stdout)
+                c_handler.setFormatter(formatter)
+                self.logger.addHandler(c_handler)
 
     @classmethod
     def get_instance(cls) -> SystemLogger:

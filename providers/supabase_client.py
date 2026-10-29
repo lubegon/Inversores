@@ -24,8 +24,8 @@ logger = logging.getLogger("supabase_client")
 
 def _get_hostname() -> str:
     try:
-        # Creado por Luis G.
         return socket.gethostname()
+# Creado por Luis G.
     except Exception:
         return os.getenv("COMPUTERNAME") or os.getenv("HOSTNAME") or "Desconocida"
 
@@ -328,7 +328,17 @@ class SupabaseManager:
         client_ip = _get_client_ip()
 
         prepared: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, str, str]] = set()
         for r in readings:
+            prov_k = str(r.get("provider", "unknown"))
+            dev_k = str(r.get("device_key", "")).strip()
+            upd_k = str(r.get("update_time", "") or "").strip()
+            if not dev_k:
+                continue
+            dedup_key = (prov_k, dev_k, upd_k)
+            if dedup_key in seen_keys:
+                continue
+            seen_keys.add(dedup_key)
             m = dict(r.get("metrics") or {})
             if "client_host" not in m:
                 m["client_host"] = hostname

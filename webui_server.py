@@ -2809,6 +2809,7 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
     return out
 
 
+# Creado por Luis G.
 def _base_plant_name(p: str) -> str:
     if not p:
         return ""
@@ -3655,6 +3656,7 @@ def _start_job(provider: str) -> Job:
         env["HEADLESS"] = "true"
     if "PYTHONUNBUFFERED" not in env and not _dotenv_defines("PYTHONUNBUFFERED"):
         env["PYTHONUNBUFFERED"] = "1"
+    env["WEBUI_MANAGED_JOB"] = "1"
 
     # Values: por defecto, usar TURBO para evitar el reset pesado por monitor.
     if provider == "values" and "VALUES_TURBO" not in env and not _dotenv_defines("VALUES_TURBO"):
@@ -3952,7 +3954,7 @@ def _sqlite_open_by_name(db_name: str) -> sqlite3.Connection:
     conn = sqlite3.connect(
         uri,
         uri=True,
-        timeout=0.5,
+        timeout=15.0,
         check_same_thread=False,
         isolation_level=None,  # autocommit: evita transacciones largas de lectura
     )
@@ -3961,7 +3963,7 @@ def _sqlite_open_by_name(db_name: str) -> sqlite3.Connection:
     except Exception:
         pass
     try:
-        conn.execute("PRAGMA busy_timeout=250")
+        conn.execute("PRAGMA busy_timeout=15000")
     except Exception:
         pass
     try:
@@ -4900,7 +4902,8 @@ def _finalize_run(provider: str, job: Job) -> None:
         try:
             curr_slot = _current_slot()
             if curr_slot:
-                _generate_or_update_report(slot=curr_slot)
+                with _report_lock:
+                    _generate_or_update_report(slot=curr_slot)
         except Exception:
             pass
     except Exception:

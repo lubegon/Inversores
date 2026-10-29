@@ -1,5 +1,5 @@
 {
-  "version": "2.19.2",
-  "release_date": "2026-10-27",
-  "notes": "Correccion critica de Growatt: recuperacion automatica de sesion expirada (re-login), asignacion y deduplicacion precisa de los 9 inversores fisicos por serial en Excel, mapeo de franja horaria tarde (17:00-22:59) y bloqueo de persistencia de telemetria vacia."
+  "version": "2.19.3",
+  "release_date": "2026-10-28",
+  "notes": "Reparacion integral de Growatt, SQLite y Logs: re-login in-place sin colision de bucle asyncio en Playwright, eliminacion de falso positivo 'Welcome' en login, hidratacion activa de animPan3 con soporte multi-inversor, modo append atomico en system_logger, deduplicacion de lotes Supabase y timeouts WAL/busy_timeout en SQLite."
 }

@@ -1462,14 +1462,15 @@ def _process_sync_queue() -> None:
     _SYNC_QUEUE.clear()
 
     # Diagrama de flujo: Guarda local -> Envía copia (Supabase) + Excel
-    try:
-        from webui_server import _generate_or_update_report, _current_slot
-        curr_slot = _current_slot()
-        if curr_slot:
-            _generate_or_update_report(slot=curr_slot)
-            print(f"[OK] Reporte Excel actualizado automáticamente para el turno: {curr_slot}", flush=True)
-    except Exception as ex:
-        print(f"[INFO] Aviso actualizando reporte Excel local: {ex}", flush=True)
+    if not os.getenv("WEBUI_MANAGED_JOB"):
+        try:
+            from webui_server import _generate_or_update_report, _current_slot
+            curr_slot = _current_slot()
+            if curr_slot:
+                _generate_or_update_report(slot=curr_slot)
+                print(f"[OK] Reporte Excel actualizado automáticamente para el turno: {curr_slot}", flush=True)
+        except Exception as ex:
+            print(f"[INFO] Aviso actualizando reporte Excel local: {ex}", flush=True)
 
 
 if __name__ == "__main__":
