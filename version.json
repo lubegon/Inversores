@@ -1,5 +1,5 @@
 {
-    "version": "2.19.6",
+    "version": "2.19.7",
     "release_date": "2026-10-30",
-    "notes": "Auditoria forense integral: unificacion de BD Voltage Shinemonitor.sqlite, prevencion de colision de seriales repetidos entre plantas Growatt, conversion horaria UTC a Venezuela (UTC-4), lotes batch en Supabase y auto-reparacion de .env en actualizador."
+    "notes": "Actualizacion de memoria institucional (AGENTS.md y skill Windows 10) consolidando arquitectura hibrida Local-First + Supabase, reglas de auditoria forense v2.19.6 y blindaje para las 16 PCs operativas."
 }
