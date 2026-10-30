@@ -89,13 +89,13 @@ def _s(text: str | None) -> str:
 
 
 def _is_login_screen(page) -> bool:
-    """Detecta con precisión si la página actual está en el formulario de login.
+    """Detecta con precisión si la página actual está en el formulario de login o error de sesión.
 
     Evita falsos positivos con inputs ocultos de cambio de contraseña en /index.
     """
     try:
         current_url = (page.url or "").lower()
-        if "/login" in current_url:
+        if "/login" in current_url or "errornologin" in current_url or "error.do" in current_url:
             return True
         acc = page.locator("#val_loginAccount").first
         if acc.count() > 0 and acc.is_visible():
@@ -484,15 +484,19 @@ def main() -> None:
             try:
                 log.step("Abriendo home")
                 page.goto(home_url, wait_until="domcontentloaded", timeout=45_000)
-                page.wait_for_timeout(1_500)
+                # Dar margen para posibles redirecciones JS de Growatt (ej. /index -> /error.do -> /login)
+                page.wait_for_timeout(2_500)
 
                 # Auto-recuperación de sesión expirada IN-PLACE (sin abrir un segundo sync_playwright)
-                if _is_login_screen(page):
-                    log.warn("Sesión expirada o en pantalla de login. Ejecutando login automático in-place...")
-                    relog_ok = perform_login_on_page(page, context, base_dir, log)
+                if _is_login_screen(page) or "selectplant" in (page.url or "").lower():
+                    if _is_login_screen(page):
+                        log.warn("Sesión expirada o en pantalla de login. Ejecutando login automático in-place...")
+                        relog_ok = perform_login_on_page(page, context, base_dir, log)
+                    else:
+                        relog_ok = True
                     if relog_ok and "index" not in (page.url or "").lower():
                         page.goto(home_url, wait_until="domcontentloaded", timeout=45_000)
-                        page.wait_for_timeout(1_500)
+                        page.wait_for_timeout(2_000)
 
                 if _is_login_screen(page):
                     dump_debug(page, base_dir, "growatt-login-blocked")
@@ -505,7 +509,14 @@ def main() -> None:
                         state="attached", timeout=20_000
                     )
                 except Exception:
-                    pass
+                    # Si durante la espera fue redirigido a login o selectPlant, recuperar antes de listar plantas
+                    if _is_login_screen(page) or "selectplant" in (page.url or "").lower():
+                        if _is_login_screen(page):
+                            log.warn("Sesión expirada detectada al cargar selector. Re-autenticando in-place...")
+                            perform_login_on_page(page, context, base_dir, log)
+                        if "index" not in (page.url or "").lower():
+                            page.goto(home_url, wait_until="domcontentloaded", timeout=45_000)
+                            page.wait_for_timeout(2_000)
 
                 plant_names = _select_plants(page, log)
                 if not plant_names:
@@ -531,9 +542,13 @@ def main() -> None:
                     log.step(f"Planta {idx+1}/{len(plant_names)}: {plant_name}")
                     _update_sync_status("growatt", idx, len(plant_names), "syncing", base_dir)
                     try:
-                        if _is_login_screen(page):
-                            log.warn("Sesión expirada durante recorrido. Re-autenticando in-place...")
-                            perform_login_on_page(page, context, base_dir, log)
+                        if _is_login_screen(page) or "selectplant" in (page.url or "").lower():
+                            if _is_login_screen(page):
+                                log.warn("Sesión expirada durante recorrido. Re-autenticando in-place...")
+                                perform_login_on_page(page, context, base_dir, log)
+                            if "index" not in (page.url or "").lower():
+                                page.goto(home_url, wait_until="domcontentloaded", timeout=45_000)
+                                page.wait_for_timeout(2_000)
 
                         _select_plant_by_index(page, idx, plant_name)
 

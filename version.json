@@ -1,5 +1,5 @@
 {
-    "version": "2.19.7",
+    "version": "2.19.8",
     "release_date": "2026-10-30",
-    "notes": "Actualizacion de memoria institucional (AGENTS.md y skill Windows 10) consolidando arquitectura hibrida Local-First + Supabase, reglas de auditoria forense v2.19.6 y blindaje para las 16 PCs operativas."
+    "notes": "Correccion de redireccion post-login de Growatt (/selectPlant y /error.do?errorMess=errorNoLogin -> /index) y auto-migracion de columnas updated_at/last_seen_at en meta_plants y meta_devices de ShineMonitor."
 }

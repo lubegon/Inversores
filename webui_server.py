@@ -656,12 +656,14 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
                 dev_k = str(r.get("device_key") or "").strip()
                 m = dict(r.get("metrics") or {})
                 ts_raw = str(r.get("update_time") or r.get("inserted_at") or "").strip()
+                ins_raw = str(r.get("inserted_at") or "").strip()
                 ts = _format_short_timestamp(ts_raw)
                 st = str(r.get("status") or "").strip()
                 m["Timestamp"] = ts
                 m["update_time"] = ts
                 m["timestamp"] = ts
-                m["captured_at"] = ts
+                m["captured_at"] = _format_short_timestamp(ins_raw) if ins_raw else ts
+                m["inserted_at"] = ins_raw or ts
                 m["status"] = st
                 m["connection_status"] = st
 
@@ -706,41 +708,30 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
         rows = _fetch_supabase_raw_rows(provider, limit=2500)
         if True:
             for r in rows:
-                ts_raw = str(r.get("update_time") or r.get("inserted_at") or "").strip()
-                if not ts_raw or not _is_today(ts_raw):
+                upd_raw = str(r.get("update_time") or "").strip()
+                ins_raw = str(r.get("inserted_at") or "").strip()
+                ts_raw = upd_raw or ins_raw
+                if not ts_raw or (not _is_today(upd_raw) and not _is_today(ins_raw)):
                     continue
 
-                clean_ts = ts_raw.split(".")[0].split("+")[0].replace("T", " ")
-                dt = None
-                for fmt in ("%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
-                    try:
-                        dt = datetime.strptime(clean_ts, fmt)
-                        break
-                    except Exception:
-                        pass
-                if not dt:
+                candidate_slots: list[str] = []
+                for cand_ts in (upd_raw, ins_raw):
+                    if cand_ts and _is_today(cand_ts):
+                        cs = _slot_for_timestamp(cand_ts)
+                        if cs and cs not in candidate_slots:
+                            candidate_slots.append(cs)
+                if not candidate_slots:
                     continue
-
-                hour = dt.hour
-                if "T" in ts_raw or "Z" in ts_raw or "+" in ts_raw:
-                    hour = (hour - 4) % 24
-
-                if 5 <= hour < 12:
-                    s_name = "manana"
-                elif 12 <= hour < 17:
-                    s_name = "mediodia"
-                elif 17 <= hour < 23:
-                    s_name = "tarde"
-                else:
-                    s_name = "medianoche"
 
                 dev_k = str(r.get("device_key") or "").strip()
                 m = dict(r.get("metrics") or {})
-                ts = _format_short_timestamp(ts_raw)
+                display_ts_raw = upd_raw if _is_today(upd_raw) else (ins_raw or upd_raw)
+                ts = _format_short_timestamp(display_ts_raw)
                 st = str(r.get("status") or "").strip()
                 m["Timestamp"] = ts
                 m["update_time"] = ts
                 m["timestamp"] = ts
+                m["inserted_at"] = ins_raw or ts
                 m["status"] = st
                 m["connection_status"] = st
 
@@ -767,11 +758,12 @@ def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str]
                     m.get("plant_id"),
                     m.get("device_name"),
                 ]
-                for k in keys_to_index:
-                    if k:
-                        nk = _norm_key(str(k))
-                        if nk and (nk, s_name) not in out:
-                            out[(nk, s_name)] = m
+                for s_name in candidate_slots:
+                    for k in keys_to_index:
+                        if k:
+                            nk = _norm_key(str(k))
+                            if nk and (nk, s_name) not in out:
+                                out[(nk, s_name)] = m
     except Exception:
         pass
     return out
@@ -2051,15 +2043,27 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
             ws.cell(r_num, 2).value = hl
             slot_rows[_canonical_slot(hl)] = r_num
 
-        # 1. Buscar en SQLite
+        # 1. Buscar en SQLite (últimas filas de hoy agrupadas por turno)
         matched_t = _match_growatt_plant_to_table(plant_display_name, raw_tables)
         sqlite_row = None
+        sqlite_by_slot: dict[str, dict[str, Any]] = {}
         if matched_t and conn_growatt:
             try:
                 conn_growatt.row_factory = sqlite3.Row
-                db_r = conn_growatt.execute(f'SELECT * FROM "{matched_t}" ORDER BY id DESC LIMIT 1').fetchone()
-                if db_r:
-                    sqlite_row = dict(db_r)
+                db_rows = conn_growatt.execute(f'SELECT * FROM "{matched_t}" ORDER BY id DESC LIMIT 12').fetchall()
+                if db_rows:
+                    sqlite_row = dict(db_rows[0])
+                    for dbr in db_rows:
+                        d_dict = dict(dbr)
+                        u_ts = d_dict.get("update_time")
+                        i_ts = d_dict.get("inserted_at")
+                        if not _is_today(u_ts) and not _is_today(i_ts):
+                            continue
+                        for cand_ts in (u_ts, i_ts):
+                            if cand_ts and _is_today(cand_ts):
+                                cs = _slot_for_timestamp(cand_ts)
+                                if cs and cs not in sqlite_by_slot:
+                                    sqlite_by_slot[cs] = d_dict
             except Exception:
                 sqlite_row = None
 
@@ -2077,6 +2081,7 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 panel = dict(res.get("panel_device") or {})
                 cache_row = {
                     "update_time": panel.get("update_time") or m_row.get("update_time") or res.get("scraped_at"),
+                    "inserted_at": res.get("scraped_at"),
                     "connection_status": panel.get("connection_status") or m_row.get("connection_status") or "Online",
                     "battery_voltage": m_row.get("battery_voltage") or m_dict.get("Battery Voltage") or m_dict.get("battery_voltage"),
                     "pv1_pv2_voltage": m_row.get("pv1_pv2_voltage") or m_dict.get("PV1/PV2 Voltage") or m_dict.get("pv1_pv2_voltage"),
@@ -2105,29 +2110,59 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                     break
 
         # Seleccionar mejor fuente de datos para el slot
-        best_data = None
-        if sqlite_row and _has_numeric_metrics(sqlite_row):
-            best_data = sqlite_row
-        elif cache_row and _has_numeric_metrics(cache_row):
-            best_data = cache_row
-        elif supa_row and _has_numeric_metrics(supa_row):
-            best_data = supa_row
-        elif sqlite_row:
-            best_data = sqlite_row
-        elif cache_row:
-            best_data = cache_row
-        elif supa_row:
-            best_data = supa_row
+        best_data = sqlite_by_slot.get(slot)
+        if not best_data:
+            if sqlite_row and _has_numeric_metrics(sqlite_row):
+                best_data = sqlite_row
+            elif cache_row and _has_numeric_metrics(cache_row):
+                best_data = cache_row
+            elif supa_row and _has_numeric_metrics(supa_row):
+                best_data = supa_row
+            elif sqlite_row:
+                best_data = sqlite_row
+            elif cache_row:
+                best_data = cache_row
+            elif supa_row:
+                best_data = supa_row
 
-        # Saneamiento anti-duplicación: verificar que best_data pertenezca estrictamente al slot pedido
+        # Saneamiento anti-duplicación: verificar que best_data pertenezca al slot pedido (por update_time o inserted_at)
         if best_data:
-            best_ts = best_data.get("update_time") or best_data.get("Timestamp") or best_data.get("timestamp") or best_data.get("inserted_at")
-            if not _is_today(best_ts):
+            u_ts = best_data.get("update_time") or best_data.get("Timestamp") or best_data.get("timestamp")
+            i_ts = best_data.get("inserted_at")
+            if not _is_today(u_ts) and not _is_today(i_ts):
                 best_data = None
             else:
-                best_slot = _slot_for_timestamp(best_ts)
-                if best_slot and best_slot != slot:
-                    best_data = supa_row if (supa_row and _slot_for_timestamp(supa_row.get("update_time")) == slot) else None
+                slot_u = _slot_for_timestamp(u_ts) if _is_today(u_ts) else None
+                slot_i = _slot_for_timestamp(i_ts) if _is_today(i_ts) else None
+                if slot not in (slot_u, slot_i):
+                    best_data = sqlite_by_slot.get(slot)
+                    if not best_data and supa_row:
+                        sr_u = _slot_for_timestamp(supa_row.get("update_time")) if _is_today(supa_row.get("update_time")) else None
+                        sr_i = _slot_for_timestamp(supa_row.get("inserted_at")) if _is_today(supa_row.get("inserted_at")) else None
+                        if slot in (sr_u, sr_i):
+                            best_data = supa_row
+
+        def _write_gw_row(row_num: int, d_row: dict[str, Any]) -> None:
+            u_raw = d_row.get("update_time") or d_row.get("Timestamp") or d_row.get("timestamp")
+            i_raw = d_row.get("inserted_at")
+            u_time = str(u_raw if _is_today(u_raw) else (i_raw or u_raw or ""))
+            conn_st = str(d_row.get("connection_status") or d_row.get("status") or "")
+            b_volt = d_row.get("battery_voltage") or d_row.get("Battery Voltage")
+            pv_volt = d_row.get("pv1_pv2_voltage") or d_row.get("PV1/PV2 Voltage")
+            pv_curr = d_row.get("pv1_pv2_recharging_current") or d_row.get("PV1/PV2 Recharging Current")
+            tot_curr = d_row.get("total_charge_current") or d_row.get("Total Charge Current")
+            ac_in = d_row.get("ac_input_voltage_frequency") or d_row.get("Ac Input Voltage/Frequency") or d_row.get("AC Input Voltage/Frequency")
+            ac_out = d_row.get("ac_output_voltage_frequency") or d_row.get("AC Output Voltage/Frequency")
+
+            ws.cell(row_num, 3).value = _format_short_timestamp(u_time) if u_time else None
+            ws.cell(row_num, 4).value = conn_st or None
+            ws.cell(row_num, 5).value = _clean_metric_val(b_volt) if b_volt else None
+            ws.cell(row_num, 6).value = _clean_metric_val(pv_volt) if pv_volt else None
+            ws.cell(row_num, 7).value = _clean_metric_val(pv_curr) if pv_curr else None
+            ws.cell(row_num, 8).value = _clean_metric_val(tot_curr) if tot_curr else None
+            ws.cell(row_num, 9).value = _clean_metric_val(ac_in) if ac_in else None
+            ws.cell(row_num, 10).value = _clean_metric_val(ac_out) if ac_out else None
+            _apply_row_fill_if_offgrid(ws, row_num, len(headers), conn_st)
 
         # Actualizar cada franja horaria respetando las reglas de slots pasados vs futuros
         for s_name, r_idx in slot_rows.items():
@@ -2145,35 +2180,28 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
             # Si es el slot actual solicitado
             if s_name == slot:
                 if best_data:
-                    u_time = str(best_data.get("update_time") or best_data.get("Timestamp") or best_data.get("timestamp") or best_data.get("inserted_at") or "")
-                    conn_st = str(best_data.get("connection_status") or best_data.get("status") or "")
-                    b_volt = best_data.get("battery_voltage") or best_data.get("Battery Voltage")
-                    pv_volt = best_data.get("pv1_pv2_voltage") or best_data.get("PV1/PV2 Voltage")
-                    pv_curr = best_data.get("pv1_pv2_recharging_current") or best_data.get("PV1/PV2 Recharging Current")
-                    tot_curr = best_data.get("total_charge_current") or best_data.get("Total Charge Current")
-                    ac_in = best_data.get("ac_input_voltage_frequency") or best_data.get("Ac Input Voltage/Frequency") or best_data.get("AC Input Voltage/Frequency")
-                    ac_out = best_data.get("ac_output_voltage_frequency") or best_data.get("AC Output Voltage/Frequency")
-
-                    ws.cell(r_idx, 3).value = _format_short_timestamp(u_time) if u_time else None
-                    ws.cell(r_idx, 4).value = conn_st or None
-                    ws.cell(r_idx, 5).value = _clean_metric_val(b_volt) if b_volt else None
-                    ws.cell(r_idx, 6).value = _clean_metric_val(pv_volt) if pv_volt else None
-                    ws.cell(r_idx, 7).value = _clean_metric_val(pv_curr) if pv_curr else None
-                    ws.cell(r_idx, 8).value = _clean_metric_val(tot_curr) if tot_curr else None
-                    ws.cell(r_idx, 9).value = _clean_metric_val(ac_in) if ac_in else None
-                    ws.cell(r_idx, 10).value = _clean_metric_val(ac_out) if ac_out else None
-
-                    _apply_row_fill_if_offgrid(ws, r_idx, len(headers), conn_st)
+                    _write_gw_row(r_idx, best_data)
                 else:
                     ws.cell(r_idx, 3).value = "SIN DATOS"
             else:
-                # Slot anterior: restaurar si existía lectura válida de hoy
+                # Slot anterior: restaurar si existía en Excel, SQLite o Supabase para ese turno
                 prev_saved = existing_sheet_data.get((norm_disp, s_name))
-                if prev_saved and prev_saved.get(3):
+                if prev_saved and prev_saved.get(3) and str(prev_saved.get(3)).strip().upper() != "SIN DATOS":
                     for col_k, col_v in prev_saved.items():
                         ws.cell(r_idx, col_k).value = col_v
                 else:
-                    ws.cell(r_idx, 3).value = "SIN DATOS"
+                    hist_row = sqlite_by_slot.get(s_name)
+                    if not hist_row:
+                        for ck in search_keys:
+                            if ck:
+                                nk = _norm_key(str(ck))
+                                if (nk, s_name) in growatt_slot_telemetry:
+                                    hist_row = growatt_slot_telemetry[(nk, s_name)]
+                                    break
+                    if hist_row:
+                        _write_gw_row(r_idx, hist_row)
+                    else:
+                        ws.cell(r_idx, 3).value = "SIN DATOS"
 
         # Fila separadora entre inversores
         curr_r += 5
@@ -2781,6 +2809,7 @@ def _append_plant_event(*, provider: str, plant_id: str, outcome: str, ts: float
     try:
         _ensure_storage()
         path = _events_file(provider)
+# Creado por Luis G.
         rec = {"ts": float(ts), "provider": provider, "plant_id": str(plant_id), "outcome": outcome}
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -2809,7 +2838,6 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
             try:
                 ts = float(rec.get("ts"))
             except Exception:
-# Creado por Luis G.
                 continue
             if ts < min_ts or ts > now + 5:
                 continue

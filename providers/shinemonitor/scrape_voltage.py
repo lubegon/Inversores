@@ -123,7 +123,8 @@ def _ensure_meta_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS meta_plants (
             plant_id TEXT PRIMARY KEY,
             plant_name TEXT,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            last_seen_at TEXT
         )
         """
     )
@@ -134,10 +135,25 @@ def _ensure_meta_tables(conn: sqlite3.Connection) -> None:
             plant_id TEXT NOT NULL,
             device_name TEXT NOT NULL,
             table_name TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            last_seen_at TEXT
         )
         """
     )
+    for tbl, col in [
+        ("meta_plants", "updated_at"),
+        ("meta_plants", "last_seen_at"),
+        ("meta_devices", "updated_at"),
+        ("meta_devices", "last_seen_at"),
+    ]:
+        try:
+            existing_cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{tbl}")').fetchall()}
+            if col not in existing_cols:
+                conn.execute(f'ALTER TABLE "{tbl}" ADD COLUMN "{col}" TEXT')
+                if col == "updated_at" and "last_seen_at" in existing_cols:
+                    conn.execute(f'UPDATE "{tbl}" SET updated_at = COALESCE(last_seen_at, "") WHERE updated_at IS NULL')
+        except Exception:
+            pass
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS plant_events (
@@ -197,16 +213,30 @@ def _upsert_meta_plant(
     plant_name: str | None,
     now: str,
 ) -> None:
-    conn.execute(
-        """
-        INSERT INTO meta_plants (plant_id, plant_name, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(plant_id) DO UPDATE SET
-            plant_name = excluded.plant_name,
-            updated_at = excluded.updated_at
-        """,
-        (plant_id, plant_name, now),
-    )
+    try:
+        conn.execute(
+            """
+            INSERT INTO meta_plants (plant_id, plant_name, updated_at, last_seen_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(plant_id) DO UPDATE SET
+                plant_name = excluded.plant_name,
+                updated_at = excluded.updated_at,
+                last_seen_at = excluded.last_seen_at
+            """,
+            (plant_id, plant_name, now, now),
+        )
+    except sqlite3.OperationalError:
+        _ensure_meta_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO meta_plants (plant_id, plant_name, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(plant_id) DO UPDATE SET
+                plant_name = excluded.plant_name,
+                updated_at = excluded.updated_at
+            """,
+            (plant_id, plant_name, now),
+        )
     _SYNC_QUEUE.append({
         "type": "plant",
         "provider": "shinemonitor",
@@ -225,18 +255,34 @@ def _upsert_meta_device(
     table_name: str,
     now: str,
 ) -> None:
-    conn.execute(
-        """
-        INSERT INTO meta_devices (device_key, plant_id, device_name, table_name, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(device_key) DO UPDATE SET
-            plant_id = excluded.plant_id,
-            device_name = excluded.device_name,
-            table_name = excluded.table_name,
-            updated_at = excluded.updated_at
-        """,
-        (device_key, plant_id, device_name, table_name, now),
-    )
+    try:
+        conn.execute(
+            """
+            INSERT INTO meta_devices (device_key, plant_id, device_name, table_name, updated_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(device_key) DO UPDATE SET
+                plant_id = excluded.plant_id,
+                device_name = excluded.device_name,
+                table_name = excluded.table_name,
+                updated_at = excluded.updated_at,
+                last_seen_at = excluded.last_seen_at
+            """,
+            (device_key, plant_id, device_name, table_name, now, now),
+        )
+    except sqlite3.OperationalError:
+        _ensure_meta_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO meta_devices (device_key, plant_id, device_name, table_name, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(device_key) DO UPDATE SET
+                plant_id = excluded.plant_id,
+                device_name = excluded.device_name,
+                table_name = excluded.table_name,
+                updated_at = excluded.updated_at
+            """,
+            (device_key, plant_id, device_name, table_name, now),
+        )
     _SYNC_QUEUE.append({
         "type": "device",
         "provider": "shinemonitor",

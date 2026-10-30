@@ -157,6 +157,20 @@ def perform_login_on_page(page, context, base_dir: Path, log: RunLogger) -> bool
     # Esperar estabilización de cookies y sesión en /index
     page.wait_for_timeout(1_500)
 
+    # Si Growatt redirigió a /selectPlant tras el login, hacer click en una planta o navegar a /index
+    # para que la sesión deje listo el dashboard principal (#top_plant_search / #header_sel_plantstwo).
+    try:
+        if "selectplant" in (page.url or "").lower():
+            first_plant = page.locator("#selectPlant-con li[data-id]").first
+            if first_plant.count() > 0 and first_plant.is_visible():
+                first_plant.click(timeout=5_000)
+                page.wait_for_timeout(2_000)
+            if "index" not in (page.url or "").lower():
+                page.goto("https://server.growatt.com/index", wait_until="domcontentloaded", timeout=30_000)
+                page.wait_for_timeout(1_500)
+    except Exception:
+        pass
+
     # Cerrar posibles popups/modales tras login
     try:
         close_btn = page.locator("div.layui-layer-close, .pop-close, .notice-close, .layui-layer-btn0").first
