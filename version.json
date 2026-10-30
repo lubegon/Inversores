@@ -1,5 +1,5 @@
 {
-    "version": "2.19.9",
+    "version": "2.19.10",
     "release_date": "2026-10-30",
-    "notes": "Optimizacion drastica de tiempos de ejecucion en ShineMonitor y Growatt: eliminacion de bloqueos de 60s-120s por planta en selectores ocultos, extraccion atomica JS de celdas Kendo Grid y deteccion instantanea de plantas sin dispositivos."
+    "notes": "Actualizacion de memoria tecnica del proyecto (.agents/AGENTS.md) con las reglas de optimizacion de tiempos, extraccion atomica JS en Kendo Grid, redireccion /selectPlant de Growatt y migracion automatica SQLite."
 }
