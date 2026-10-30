@@ -400,12 +400,15 @@ def _login_if_needed(page: Page, user: str, password: str, storage_state_path: P
                 btn_loc.click()
 
             try:
-                page.wait_for_url("**/main.html*", timeout=30_000)
+                page.wait_for_url("**/main.html*", timeout=15_000)
             except Exception:
                 pass
 
-            page.wait_for_selector("#plant_tree", state="attached", timeout=60_000)
-            page.wait_for_timeout(500)
+            try:
+                page.wait_for_selector("#headPlos, #plant_tree", state="attached", timeout=15_000)
+            except Exception:
+                pass
+            page.wait_for_timeout(300)
 
             if storage_state_path:
                 try:
@@ -429,8 +432,8 @@ def _tree_is_empty(tree: Locator) -> bool:
 def _ensure_tree_loaded(
     page: Page,
     *,
-    timeout_ms: int = 20_000,
-    retries: int = 2,
+    timeout_ms: int = 12_000,
+    retries: int = 1,
     run_dir: Path | None = None,
     debug_name: str = "tree-load-error",
 ) -> Locator:
@@ -439,12 +442,13 @@ def _ensure_tree_loaded(
     tree = page.locator(tree_selectors).first
 
     for attempt in range(retries + 1):
+        wait_ms = 2_500 if attempt == 0 else min(timeout_ms, 8_000)
         try:
-            tree.wait_for(state="attached", timeout=timeout_ms)
+            tree.wait_for(state="attached", timeout=wait_ms)
             page.wait_for_selector(
                 "#plant_tree li.jstree-node, #plantMgrTree li.jstree-node",
                 state="attached",
-                timeout=timeout_ms,
+                timeout=wait_ms,
             )
             if tree.locator("li.jstree-node").count() > 0:
                 return tree
@@ -461,9 +465,10 @@ def _ensure_tree_loaded(
             for sel in dev_tab_selectors:
                 try:
                     tab = page.locator(sel).first
-                    tab.click(timeout=15000)
-                    page.wait_for_timeout(1500)
-                    break
+                    if tab.count() > 0 and tab.is_visible():
+                        tab.click(timeout=2_500)
+                        page.wait_for_timeout(600)
+                        break
                 except Exception:
                     pass
 
@@ -483,7 +488,7 @@ def _select_plant_and_load_tree(
     user: str = "",
     password: str = "",
     storage_state_path: Path | None = None,
-    timeout_ms: int = 60_000,
+    timeout_ms: int = 15_000,
     retries: int = 1,
 ) -> tuple[str | None, Locator]:
 
@@ -496,57 +501,18 @@ def _select_plant_and_load_tree(
         if user and password:
             _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
         try:
-            dropdown.wait_for(state="attached", timeout=timeout_ms)
+            dropdown.wait_for(state="attached", timeout=10_000)
         except Exception:
             pass
 
+    # Obtener nombre de la planta directamente vía JS sin bloquear el hilo de UI
+    plant_name = plant.name
     try:
-        dropdown.hover(timeout=2_000)
-    except Exception:
-        pass
-
-    try:
-        dropdown.click(timeout=5_000)
-    except Exception:
-        try:
-            dropdown.click(timeout=5_000, force=True)
-        except Exception:
-            pass
-
-    try:
-        page.wait_for_selector(
-            "#plantlist, #plant_select_listbox, .k-animation-container, ul.k-list",
-            state="visible",
-            timeout=5_000,
+        js_name = page.evaluate(
+            f"() => {{ const el = document.querySelector('#plantlist li#plant_{plant.plant_id}, li#plant_{plant.plant_id}'); return el ? (el.textContent || '').trim() : ''; }}"
         )
-    except Exception:
-        try:
-            dropdown.click(timeout=3_000, force=True)
-        except Exception:
-            pass
-        page.wait_for_timeout(500)
-
-    item_selectors = [
-        f"#plantlist li#plant_{plant.plant_id}",
-        f"#plantlist li#plant_{plant.plant_id} a",
-        f"li#plant_{plant.plant_id}",
-        f"#plant_select_listbox li[data-val='{plant.plant_id}']",
-        f"li[data-val='{plant.plant_id}']",
-    ]
-    item = page.locator(", ".join(item_selectors)).first
-
-    if item.count() == 0:
-        page.wait_for_timeout(300)
-
-    if item.count() == 0:
-        _dump_debug(page, run_dir, f"{plant.plant_id}-dropdown-item-not-found")
-        raise RuntimeError(
-            f"No se encontró la plant_id {plant.plant_id} en el combo de plantas (#plantlist / #plant_select_listbox)"
-        )
-
-    plant_name = None
-    try:
-        plant_name = (item.inner_text() or "").strip() or None
+        if js_name:
+            plant_name = " ".join(str(js_name).split()).strip()
     except Exception:
         pass
 
@@ -556,49 +522,71 @@ def _select_plant_and_load_tree(
     except Exception:
         pass
 
-    try:
-        item.scroll_into_view_if_needed()
-    except Exception:
-        pass
-
     is_main = "main.html" in (page.url or "")
 
+    # Seleccionar planta vía getPlantId directo (instantáneo, sin abrir ni hacer scroll de 60s en el dropdown oculto)
+    invoked_js = False
     try:
-        page.evaluate(f"try {{ if (typeof currIndex !== 'undefined') currIndex = 3; }} catch (_) {{}}; getPlantId('plant_{plant.plant_id}');")
+        invoked_js = bool(
+            page.evaluate(
+                f"() => {{ try {{ if (typeof currIndex !== 'undefined') currIndex = 3; }} catch (_) {{}} if (typeof getPlantId === 'function') {{ getPlantId('plant_{plant.plant_id}'); return true; }} return false; }}"
+            )
+        )
     except Exception:
+        invoked_js = False
+
+    if not invoked_js:
+        try:
+            dropdown.click(timeout=2_500, force=True)
+        except Exception:
+            pass
+        item_selectors = [
+            f"#plantlist li#plant_{plant.plant_id}",
+            f"#plantlist li#plant_{plant.plant_id} a",
+            f"li#plant_{plant.plant_id}",
+            f"#plant_select_listbox li[data-val='{plant.plant_id}']",
+            f"li[data-val='{plant.plant_id}']",
+        ]
+        item = page.locator(", ".join(item_selectors)).first
+        if item.count() == 0:
+            _dump_debug(page, run_dir, f"{plant.plant_id}-dropdown-item-not-found")
+            raise RuntimeError(
+                f"No se encontró la plant_id {plant.plant_id} en el combo de plantas (#plantlist / #plant_select_listbox)"
+            )
         try:
             item.evaluate("el => { if (typeof currIndex !== 'undefined') currIndex = 3; if (el.tagName === 'LI') el.click(); else (el.closest('li') || el).click(); }")
         except Exception:
-            item.click(force=True)
+            item.click(timeout=3_000, force=True)
 
     if not is_main:
         try:
-            import re
-            page.wait_for_url(re.compile(r".*(main\.html|index\.html).*"), timeout=15_000)
+            page.wait_for_url(re.compile(r".*(main\.html|index\.html).*"), timeout=8_000)
         except Exception:
             pass
 
-    page.wait_for_timeout(1000)
+    page.wait_for_timeout(450)
 
-    # Asegurar que la pestaña Device Management esté visible y seleccionada si existe
-    dev_tab_selectors = [
-        "#plantTab a:has-text('Device Management')",
-        "#plantTab a:has-text('Gestión de dispositivos')",
-        "#plantTab > li:nth-child(4) > a",
-        ".k-tabstrip-items li:has-text('Device Management')",
-    ]
-    for sel in dev_tab_selectors:
-        try:
-            tab = page.locator(sel).first
-            tab.click(timeout=15000)
-            page.wait_for_timeout(1500)
-            break
-        except Exception:
-            pass
+    # Solo hacer click en Device Management si el árbol no está aún visible y la pestaña es visible
+    if page.locator("#plant_tree li.jstree-node, #plantMgrTree li.jstree-node").count() == 0:
+        dev_tab_selectors = [
+            "#plantTab a:has-text('Device Management')",
+            "#plantTab a:has-text('Gestión de dispositivos')",
+            "#plantTab > li:nth-child(4) > a",
+            ".k-tabstrip-items li:has-text('Device Management')",
+        ]
+        for sel in dev_tab_selectors:
+            try:
+                tab = page.locator(sel).first
+                if tab.count() > 0 and tab.is_visible():
+                    tab.click(timeout=2_000)
+                    page.wait_for_timeout(500)
+                    break
+            except Exception:
+                pass
 
     tree = _ensure_tree_loaded(
         page,
-        timeout_ms=timeout_ms,
+        timeout_ms=min(timeout_ms, 12_000),
         retries=retries,
         run_dir=run_dir,
         debug_name=f"{plant.plant_id}-tree-load-error",
@@ -607,7 +595,7 @@ def _select_plant_and_load_tree(
     return plant_name, tree
 
 
-def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", timeout_ms: int = 15_000) -> tuple[int, list[Locator]]:
+def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", timeout_ms: int = 8_000) -> tuple[int, list[Locator]]:
 
     page = tree.page
     start = time.time()
@@ -617,7 +605,7 @@ def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", tim
         if c > 0:
             if not plant_id or tree.locator(f"li[id*='{plant_id}']").count() > 0 or c > 1:
                 break
-        page.wait_for_timeout(200)
+        page.wait_for_timeout(150)
 
     try:
         tree.evaluate("""(el) => {
@@ -628,7 +616,7 @@ def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", tim
             } catch (_) {}
             el.querySelectorAll('li.jstree-closed > i.jstree-ocl').forEach(icon => icon.click());
         }""")
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(300)
     except Exception:
         pass
 
@@ -641,16 +629,18 @@ def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", tim
 
     for i in range(count):
         node = nodes.nth(i)
-        a = node.locator("> a.jstree-anchor").first
-        text = (a.inner_text() or "").strip()
-        node_id = (node.get_attribute("id") or "").strip()
+        try:
+            a = node.locator("> a.jstree-anchor").first
+            text = (a.inner_text(timeout=1_500) or "").strip()
+            node_id = (node.get_attribute("id", timeout=1_500) or "").strip()
+        except Exception:
+            continue
 
         if text.lower().startswith("inverter") or text.lower().startswith("inversor") or node_id.startswith("inv_") or node_id.startswith("pn_"):
             inverter_lis.append(node)
 
     inverter_count = len(inverter_lis)
     if inverter_count == 0:
-        # Fallback: si hay nodos de hoja jstree-leaf, usarlos directamente como dispositivos
         leaf_nodes = tree.locator("li.jstree-leaf > a.jstree-anchor")
         leaf_count = leaf_nodes.count()
         if leaf_count > 0:
@@ -659,6 +649,7 @@ def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", tim
         return 0, []
 
     device_anchors: list[Locator] = []
+    seen_node_ids: set[str] = set()
 
     for inv_li in inverter_lis:
         icon = inv_li.locator("> i.jstree-icon.jstree-ocl").first
@@ -671,19 +662,29 @@ def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", tim
 
         if not is_open:
             try:
-                icon.click()
-                inv_li.page.wait_for_timeout(200)
+                icon.click(timeout=1_500)
+                inv_li.page.wait_for_timeout(150)
             except Exception:
                 pass
 
-        children = inv_li.locator("ul.jstree-children > li.jstree-node > a.jstree-anchor")
+        # Preferir nodos hoja (dispositivos reales) para no incluir carpetas intermedias ni duplicados
+        children = inv_li.locator("li.jstree-leaf > a.jstree-anchor")
         c_count = children.count()
+        if c_count == 0:
+            children = inv_li.locator("> ul.jstree-children > li.jstree-node > a.jstree-anchor")
+            c_count = children.count()
 
         for c_idx in range(c_count):
-            device_anchors.append(children.nth(c_idx))
+            cand = children.nth(c_idx)
+            try:
+                cid = cand.evaluate("el => el.closest('li.jstree-node')?.id || ''") or f"idx_{len(device_anchors)}"
+            except Exception:
+                cid = f"idx_{len(device_anchors)}"
+            if cid not in seen_node_ids:
+                seen_node_ids.add(cid)
+                device_anchors.append(cand)
 
     if not device_anchors:
-        # Si las sub-hojas fallaron pero encontramos nodos inverter, usar sus anchors directos
         for inv_li in inverter_lis:
             a = inv_li.locator("> a.jstree-anchor").first
             if a.count() > 0:
@@ -695,13 +696,14 @@ def _collect_inverters_and_device_anchors(tree: Locator, plant_id: str = "", tim
 def _device_key(anchor: Locator) -> str:
 
     try:
-        node_id = anchor.evaluate(
-            "el => el.closest('li.jstree-node')?.id || ''"
+        info = anchor.evaluate(
+            "el => ({ id: el.closest('li.jstree-node')?.id || '', text: (el.innerText || el.textContent || '').trim() })"
         )
+        node_id = str((info or {}).get("id") or "").strip()
+        text = " ".join(str((info or {}).get("text") or "").split()).strip()
     except Exception:
         node_id = ""
-
-    text = " ".join((anchor.inner_text() or "").split()).strip()
+        text = ""
 
     if node_id and text:
         return f"{node_id}__{text}"
@@ -713,7 +715,7 @@ def _device_key(anchor: Locator) -> str:
 def _click_data_details(
     page: Page,
     *,
-    timeout_ms: int = 15_000,
+    timeout_ms: int = 8_000,
     run_dir: Path | None = None,
     debug_name: str = "notab",
 ) -> bool:
@@ -728,16 +730,16 @@ def _click_data_details(
     for sel in tab_selectors:
         try:
             tab = page.locator(sel).first
-            if tab.is_visible():
-                tab.click()
+            if tab.count() > 0 and tab.is_visible():
+                tab.click(timeout=2_500)
                 return True
         except Exception:
             pass
 
     tab = page.locator("a.k-link:has-text('Data Details'), .k-tabstrip-items li:has-text('Data Details'), :text('Data Details')").first
     try:
-        tab.wait_for(state="visible", timeout=timeout_ms)
-        tab.click()
+        tab.wait_for(state="visible", timeout=min(timeout_ms, 8_000))
+        tab.click(timeout=2_500)
         return True
     except Exception:
         if run_dir:
@@ -750,7 +752,7 @@ def _is_grid_stale(grid_el: Locator, last_signature: str | None) -> bool:
     if not last_signature:
         return False
     try:
-        curr = (grid_el.inner_text() or "").strip()
+        curr = (grid_el.evaluate("el => (el.innerText || el.textContent || '').trim()") or "").strip()
         return curr == last_signature
     except Exception:
         return False
@@ -759,7 +761,7 @@ def _is_grid_stale(grid_el: Locator, last_signature: str | None) -> bool:
 def _get_grid_signature(grid_el: Locator) -> str | None:
 
     try:
-        t = (grid_el.inner_text() or "").strip()
+        t = (grid_el.evaluate("el => (el.innerText || el.textContent || '').trim()") or "").strip()
         return t if t else None
     except Exception:
         return None
@@ -835,10 +837,10 @@ def _ensure_grid_data(
                 if rows_loc.count() > 0 and rows_loc.first.is_visible():
                     break
                 
-                page.wait_for_timeout(350)
+                page.wait_for_timeout(250)
                 err_msg = page.locator("#invDetailCue, div.faultInfo").first
-                if err_msg.is_visible():
-                    text = (err_msg.inner_text() or "").lower()
+                if err_msg.count() > 0 and err_msg.is_visible():
+                    text = (err_msg.evaluate("el => (el.innerText || el.textContent || '').toLowerCase()") or "")
                     if "no detail data" in text or "no data" in text or "nodata" in text:
                         if rows_loc.count() > 0 and rows_loc.first.is_visible():
                             break
@@ -851,10 +853,9 @@ def _ensure_grid_data(
             rows_count = rows_loc.count()
             if rows_count > 0 and not stale:
 
-                headers = [
-                    (th.inner_text() or "").strip()
-                    for th in grid.locator("th").all()
-                ]
+                headers = grid.evaluate(
+                    "g => Array.from(g.querySelectorAll('th')).map(th => (th.innerText || th.textContent || '').trim())"
+                ) or []
 
                 if any(h for h in headers):
                     return grid, headers
@@ -868,9 +869,12 @@ def _ensure_grid_data(
 
         page.wait_for_timeout(200)
 
-    headers = [
-        (th.inner_text() or "").strip() for th in grid.locator("th").all()
-    ]
+    try:
+        headers = grid.evaluate(
+            "g => Array.from(g.querySelectorAll('th')).map(th => (th.innerText || th.textContent || '').trim())"
+        ) or []
+    except Exception:
+        headers = []
     return grid, headers
 
 
@@ -899,9 +903,12 @@ def _extract_grid_data(
         return None, {}, {"headers": headers, "rows": []}
 
     first_row = rows.first
-    cells = [
-        (td.inner_text() or "").strip() for td in first_row.locator("td").all()
-    ]
+    try:
+        cells = first_row.evaluate(
+            "tr => Array.from(tr.querySelectorAll('td')).map(td => (td.innerText || td.textContent || '').trim())"
+        ) or []
+    except Exception:
+        cells = []
 
     raw_data: dict[str, Any] = {
         "headers": headers,
@@ -1101,8 +1108,8 @@ def main() -> None:
 
     headless = _env_flag("HEADLESS", True)
 
-    default_timeout_ms = _env_int("SHINE_DEFAULT_TIMEOUT_MS", 30_000)
-    nav_timeout_ms = _env_int("SHINE_NAV_TIMEOUT_MS", 60_000)
+    default_timeout_ms = min(_env_int("SHINE_DEFAULT_TIMEOUT_MS", 15_000), 20_000)
+    nav_timeout_ms = _env_int("SHINE_NAV_TIMEOUT_MS", 45_000)
 
     storage_dir = base_dir / "storage"
     storage_dir.mkdir(parents=True, exist_ok=True)
@@ -1156,7 +1163,6 @@ def main() -> None:
                     try:
                         _login_if_needed(page, user=user, password=password, storage_state_path=storage_state_path)
 
-                        page.wait_for_timeout(1000)
                         plant_name, tree = _select_plant_and_load_tree(
                             page,
                             plant=plant,
@@ -1164,7 +1170,7 @@ def main() -> None:
                             user=user,
                             password=password,
                             storage_state_path=storage_state_path,
-                            timeout_ms=60_000,
+                            timeout_ms=15_000,
                             retries=1,
                         )
 
@@ -1249,7 +1255,10 @@ def main() -> None:
                                 break
 
                             a = anchors[dev_index]
-                            raw_dev_text = " ".join(a.inner_text().split()).strip()
+                            try:
+                                raw_dev_text = " ".join(str(a.evaluate("el => (el.innerText || el.textContent || '').trim()") or "").split()).strip()
+                            except Exception:
+                                raw_dev_text = ""
                             clean_dev_text = re.sub(r"\s+anchor$", "", raw_dev_text, flags=re.I)
                             clean_dev_text = re.sub(r"^dev\s+", "", clean_dev_text, flags=re.I)
                             m_ser = re.search(r"([a-zA-Z0-9_-]{6,25})", clean_dev_text)
@@ -1297,13 +1306,13 @@ def main() -> None:
 
                             opened = _click_data_details(
                                 page,
-                                timeout_ms=30_000,
+                                timeout_ms=8_000,
                                 run_dir=run_dir,
                                 debug_name=f"{plant.plant_id}-03-notab-{dev_index+1:02d}",
                             )
 
                             if not opened:
-                                # Reintento tolerante como en el sistema viejo
+                                # Reintento tolerante acotado
                                 try:
                                     print(f"  [RETRY] Data Details no aparece; reintentando planta/device...", flush=True)
                                     plant_name_retry, tree_retry = _select_plant_and_load_tree(
@@ -1313,19 +1322,19 @@ def main() -> None:
                                         user=user,
                                         password=password,
                                         storage_state_path=storage_state_path,
-                                        timeout_ms=60_000,
-                                        retries=1,
+                                        timeout_ms=12_000,
+                                        retries=0,
                                     )
                                     if plant_name_retry:
                                         plant_name = plant_name_retry
                                     _, anchors_retry = _collect_inverters_and_device_anchors(tree_retry, plant_id=plant.plant_id)
                                     if dev_index < len(anchors_retry):
                                         a_retry = anchors_retry[dev_index]
-                                        a_retry.click(timeout=5_000)
-                                        page.wait_for_timeout(900)
+                                        a_retry.click(timeout=3_000)
+                                        page.wait_for_timeout(400)
                                         opened = _click_data_details(
                                             page,
-                                            timeout_ms=60_000,
+                                            timeout_ms=8_000,
                                             run_dir=run_dir,
                                             debug_name=f"{plant.plant_id}-03-notab-retry-{dev_index+1:02d}",
                                         )

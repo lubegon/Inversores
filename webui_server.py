@@ -3698,12 +3698,12 @@ def _start_job(provider: str) -> Job:
     if provider == "values" and "VALUES_TURBO" not in env and not _dotenv_defines("VALUES_TURBO"):
         env["VALUES_TURBO"] = "1"
 
-    # ShineMonitor: en WebUI (y especialmente con carga) conviene subir timeouts por defecto.
+    # ShineMonitor: timeouts acotados para evitar bloqueos largos por planta.
     if provider == "shinemonitor":
         if "SHINE_DEFAULT_TIMEOUT_MS" not in env and not _dotenv_defines("SHINE_DEFAULT_TIMEOUT_MS"):
-            env["SHINE_DEFAULT_TIMEOUT_MS"] = "60000" if others_running else "45000"
+            env["SHINE_DEFAULT_TIMEOUT_MS"] = "18000" if others_running else "15000"
         if "SHINE_NAV_TIMEOUT_MS" not in env and not _dotenv_defines("SHINE_NAV_TIMEOUT_MS"):
-            env["SHINE_NAV_TIMEOUT_MS"] = "120000" if others_running else "90000"
+            env["SHINE_NAV_TIMEOUT_MS"] = "60000" if others_running else "45000"
 
     # Values: permitir subir timeouts cuando hay concurrencia.
     if provider == "values":

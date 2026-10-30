@@ -119,20 +119,23 @@ def _extract_panel_devices(page) -> list[tuple[str, str, str]]:
     except Exception:
         count = 0
 
-    for idx in range(max(1, count)):
-        box = boxes.nth(idx) if count > 0 else tb.locator(".deviceBox").first
+    if count == 0:
+        return [("", "", "")]
+
+    for idx in range(count):
+        box = boxes.nth(idx)
         device_serial = ""
         try:
-            device_serial = _s(box.locator("td.firstTd").first.inner_text())
+            device_serial = _s(box.locator("td.firstTd").first.inner_text(timeout=1_500))
         except Exception:
             device_serial = ""
 
         connection_status = ""
         try:
             td = box.locator("td").filter(has_text=re.compile(r"Connection\s+Status", re.I)).first
-            connection_status = _s(td.locator("span span").first.inner_text())
+            connection_status = _s(td.locator("span span").first.inner_text(timeout=1_500))
             if not connection_status:
-                raw = _s(td.inner_text())
+                raw = _s(td.inner_text(timeout=1_500))
                 connection_status = re.sub(r"(?i)connection\s+status\s*[:：]\s*", "", raw).strip()
         except Exception:
             connection_status = ""
@@ -140,9 +143,9 @@ def _extract_panel_devices(page) -> list[tuple[str, str, str]]:
         update_time = ""
         try:
             td = box.locator("td").filter(has_text=re.compile(r"Update\s+Time", re.I)).first
-            update_time = _s(td.locator("span").first.inner_text())
+            update_time = _s(td.locator("span").first.inner_text(timeout=1_500))
             if not update_time:
-                raw = _s(td.inner_text())
+                raw = _s(td.inner_text(timeout=1_500))
                 update_time = re.sub(r"(?i)update\s+time\s*[:：]\s*", "", raw).strip()
         except Exception:
             update_time = ""
@@ -158,14 +161,14 @@ def _extract_panel_device(page) -> tuple[str, str, str]:
     return _extract_panel_devices(page)[0]
 
 
-def _extract_metrics_from_embedded_table(page) -> dict[str, str]:
+def _extract_metrics_from_embedded_table(page, max_attempts: int = 4) -> dict[str, str]:
     """Lee las tablas de métricas embebidas o tooltips en la vista del dashboard Growatt.
 
     Incluye reintentos con hidratación activa de animPan3 si el AJAX tarda en responder.
     """
     out: dict[str, str] = {}
 
-    for attempt in range(4):
+    for attempt in range(max_attempts):
         # 1. Asegurar hover/click sobre el ícono de batería para activar el tooltip dinámico
         for anim_sel in ["div.animPan.animPan3", ".animPan3", "div.animPan3", "div.animPan:nth-child(3)", "div.animPan"]:
             try:
@@ -552,7 +555,7 @@ def main() -> None:
 
                         _select_plant_by_index(page, idx, plant_name)
 
-                        # Confirmar cambio de planta en el panel con timeout acotado (10s)
+                        # Confirmar cambio de planta en el panel con timeout acotado (3.5s)
                         try:
                             plant_span = (
                                 page.locator(SEL_TB_DEVICE)
@@ -561,29 +564,30 @@ def main() -> None:
                                 .locator("span")
                                 .first
                             )
-                            plant_span.wait_for(state="attached", timeout=8_000)
+                            plant_span.wait_for(state="attached", timeout=3_500)
                             page.wait_for_function(
                                 "(el, expected) => (el && (el.innerText||'').toLowerCase().includes(expected.toLowerCase()))",
                                 arg=(plant_span, plant_name),
-                                timeout=8_000,
+                                timeout=3_500,
                             )
                         except Exception:
                             # Si el primer click no cambió la planta, reintentar vía JS directo
                             _js_click_plant_dd(page, idx, plant_name)
 
-                        page.wait_for_timeout(1_800)
+                        page.wait_for_timeout(1_200)
 
-                        # Esperar panel del dispositivo (acotado a 12s en lugar de 120s)
+                        # Esperar panel del dispositivo (acotado a 4s)
                         try:
-                            page.locator(f"{SEL_PANEL_DEVICE}, {SEL_TB_DEVICE}").first.wait_for(state="attached", timeout=12_000)
+                            page.locator(f"{SEL_PANEL_DEVICE}, {SEL_TB_DEVICE}").first.wait_for(state="attached", timeout=4_000)
                         except Exception:
                             pass
 
                         # Extraer todos los dispositivos del panel (soporta plantas multi-inversor)
                         panel_devices = _extract_panel_devices(page)
+                        has_devices = any(s or c or u for s, c, u in panel_devices)
 
-                        # Tooltip: tabla embebida
-                        metrics = _extract_metrics_from_embedded_table(page)
+                        # Tooltip: tabla embebida (1 solo intento rápido si la planta no tiene dispositivos)
+                        metrics = _extract_metrics_from_embedded_table(page, max_attempts=4 if has_devices else 1)
                         if not metrics:
                             log.warn("No encontré tabla de métricas (Battery Voltage) en animPan3")
 
