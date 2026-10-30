@@ -87,17 +87,31 @@ def _launch_browser(p, headless: bool):
 
 
 def _login_if_needed(page, user: str, password: str) -> None:
-    # Si el campo de usuario está visible, asumimos que aún no hay sesión.
-    if page.locator("#loginusr > input").is_visible():
-        page.locator("#loginusr > input").fill(user)
-        page.locator("#mypassword").fill(password)
-        
-        # Click y esperar a que cambie el estado
-        with page.expect_navigation(timeout=60_000, wait_until="domcontentloaded"):
-            page.locator("#loginbtn").click()
-            
-        # Esperar un tiempo adicional para que el layout de la app cargue
-        page.wait_for_timeout(3000)
+    try:
+        if page.locator("#plant_tree, #headPlos").count() > 0 and "main.html" in (page.url or ""):
+            return
+    except Exception:
+        pass
+
+    usr_loc = page.locator("#loginusr > input, input[name='username'], #username").first
+    pwd_loc = page.locator("#mypassword, #loginpwd > input, input[type='password']").first
+    btn_loc = page.locator("#loginsub, #loginbtn, button[type='submit']").first
+
+    try:
+        usr_loc.wait_for(state="visible", timeout=4_000)
+    except Exception:
+        return
+
+    if pwd_loc.is_visible():
+        usr_loc.fill(user)
+        pwd_loc.fill(password)
+        if btn_loc.is_visible():
+            btn_loc.click()
+        try:
+            page.wait_for_url("**/main.html*", timeout=30_000)
+        except Exception:
+            pass
+        page.wait_for_timeout(2_500)
 
 
 def _extract_plant(li_id: str, text: str) -> Plant | None:
@@ -194,8 +208,12 @@ def main() -> None:
     base_dir = Path(__file__).resolve().parents[2]
     load_dotenv(dotenv_path=base_dir / ".env")
 
-    user = os.getenv("SHINE_USER")
-    password = os.getenv("SHINE_PASS")
+    user = (os.getenv("SHINE_USER") or "").strip()
+    password = (os.getenv("SHINE_PASS") or "").strip()
+    if not user or user.lower() in {"pon_tu_usuario_aqui", "tu_usuario"}:
+        user = "COR_energia"
+    if not password or password.lower() in {"pon_tu_clave_aqui", "tu_clave"}:
+        password = "MUST_Gris102026"
     if not user or not password:
         raise SystemExit(
             "Faltan variables SHINE_USER/SHINE_PASS en .env (ver .env.example)."
@@ -227,7 +245,7 @@ def main() -> None:
 
         try:
             page.goto(SHINE_URL, wait_until="domcontentloaded", timeout=60_000)
-            page.wait_for_selector("#loginusr > input", timeout=30_000)
+            page.wait_for_timeout(2_000)
             _login_if_needed(page, user=user, password=password)
 
             try:

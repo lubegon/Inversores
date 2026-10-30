@@ -587,6 +587,8 @@ def _format_short_timestamp(val: Any) -> str:
         if "T" in s:
             s_clean = s.replace("Z", "+00:00")
             dt = datetime.fromisoformat(s_clean)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone(timedelta(hours=-4)))
             return dt.strftime("%d-%m-%Y %H:%M:%S")
     except Exception:
         pass
@@ -1919,13 +1921,18 @@ def _match_growatt_plant_to_table(plant_name: str, tables: list[str]) -> str | N
     best_score = 0
     stop_words = {"nodo", "respaldo", "1er", "2do", "respald"}
     keywords = [w for w in norm_p.split() if len(w) >= 3 and w not in stop_words]
+    serial_kws = [w for w in keywords if len(w) >= 7 and any(c.isdigit() for c in w)]
+    plant_kws = [w for w in keywords if w not in serial_kws]
     for t in tables:
         norm_t = _norm_key(t.replace("g_", "").replace("_", " "))
+        # Exigir que al menos una palabra clave del nombre de la planta coincida
+        # (evita que seriales repetidos entre plantas distintas como HUEFBJV03H o HUEFBJV006 se crucen)
+        if plant_kws and not any(pk in norm_t for pk in plant_kws):
+            continue
         score = 0
         for kw in keywords:
             if kw in norm_t:
-                # Si el keyword es el número de serie (ej. HUEFBJV05N), dar gran prioridad
-                if len(kw) >= 7 and any(c.isdigit() for c in kw):
+                if kw in serial_kws:
                     score += 50
                 else:
                     score += len(kw)
@@ -2056,12 +2063,15 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
             except Exception:
                 sqlite_row = None
 
-        # 2. Buscar en caché local
+        # 2. Buscar en caché local (exigiendo coincidencia tanto de planta base como de serial)
         cache_row = None
+        norm_pbase = _norm_key(plant_base_name)
         for res in local_cache_results:
             r_pname = _norm_key(str(res.get("plant_name") or ""))
             r_serial = _norm_key(str(res.get("device_serial") or ""))
-            if (norm_ser and r_serial == norm_ser) or (r_pname and (r_pname in norm_disp or norm_disp in r_pname) and (not norm_ser or not r_serial or r_serial == norm_ser)):
+            plant_matches = bool(r_pname and (r_pname in norm_pbase or norm_pbase in r_pname or r_pname in norm_disp))
+            serial_matches = (not norm_ser) or (not r_serial) or (r_serial == norm_ser)
+            if plant_matches and serial_matches:
                 m_dict = dict(res.get("metrics") or {})
                 m_row = dict(res.get("row") or {})
                 panel = dict(res.get("panel_device") or {})
@@ -2077,14 +2087,12 @@ def _update_report_growatt_sheet(*, ws, conn_growatt: sqlite3.Connection | None,
                 }
                 break
 
-        # 3. Buscar en Supabase
+        # 3. Buscar en Supabase (sin usar norm_ser aislado para evitar colisión entre plantas con mismo serial)
         supa_row = None
         search_keys = [
             norm_disp,
-            norm_ser,
             matched_t,
             f"{plant_base_name} {serial_code}",
-            _norm_key(plant_base_name),
         ]
         for ck in search_keys:
             if ck:
@@ -2801,6 +2809,7 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
             try:
                 ts = float(rec.get("ts"))
             except Exception:
+# Creado por Luis G.
                 continue
             if ts < min_ts or ts > now + 5:
                 continue
@@ -2809,7 +2818,6 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
         return []
     return out
 
-# Creado por Luis G.
 
 def _base_plant_name(p: str) -> str:
     if not p:
@@ -3941,10 +3949,11 @@ def _sqlite_open_by_name(db_name: str) -> sqlite3.Connection:
         raise ValueError("db inválida")
 
     path = BASE_DIR / db_name
-    if not path.exists():
-        path = BASE_DIR / "Captura_Inversores_Deploy" / db_name
-    if not path.exists():
-        path = STORAGE_DIR / db_name
+    if not path.exists() or path.stat().st_size == 0:
+        for cand in (BASE_DIR / "Captura_Inversores_Deploy" / db_name, STORAGE_DIR / db_name):
+            if cand.exists() and cand.stat().st_size > 0:
+                path = cand
+                break
     if not path.exists():
         raise FileNotFoundError("db no existe")
 
@@ -3981,23 +3990,30 @@ def _sqlite_open_rw_by_name(db_name: str) -> sqlite3.Connection:
         raise ValueError("db inválida")
 
     path = BASE_DIR / db_name
+    if not path.exists() or path.stat().st_size == 0:
+        for cand in (BASE_DIR / "Captura_Inversores_Deploy" / db_name, STORAGE_DIR / db_name):
+            if cand.exists() and cand.stat().st_size > 0:
+                path = cand
+                break
     if not path.exists():
         raise FileNotFoundError("db no existe")
 
     conn = sqlite3.connect(
         str(path),
-        timeout=10,
+        timeout=30.0,
         check_same_thread=False,
     )
     try:
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA busy_timeout=30000")
     except Exception:
         pass
     try:
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
     except Exception:
         pass
     return conn
+
 
 def _sqlite_checkpoint(db_name: str) -> None:
     """Fuerza checkpoint de WAL para que datos/schema se escriban en el .sqlite.
@@ -4006,8 +4022,8 @@ def _sqlite_checkpoint(db_name: str) -> None:
     puede verse como "sin tablas" en algunos visores.
     """
 
-    path = (BASE_DIR / db_name)
-    if not path.exists():
+    path = BASE_DIR / db_name
+    if not path.exists() or path.stat().st_size == 0:
         return
 
     # Intentar varias veces por si hay un lector momentáneo.

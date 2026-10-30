@@ -36,7 +36,7 @@ from playwright.sync_api import sync_playwright
 from .common import RunLogger, dump_debug, env_flag, launch_browser
 from .login import perform_login_on_page
 from .voltage_sqlite import GrowattRow, connect_db, ensure_monitor_table, insert_monitor_row, monitor_table_name
-from providers.supabase_client import save_device, save_plant, save_telemetry_reading, save_telemetry_readings_batch
+from providers.supabase_client import save_device, save_plant, save_plants_batch, save_devices_batch, save_telemetry_reading, save_telemetry_readings_batch
 
 DEFAULT_HOME_URL = "https://server.growatt.com/index"
 
@@ -597,7 +597,7 @@ def main() -> None:
                             log.ok(f"SQLite: insertado en {table_name} (Planta {idx+1}/{len(plant_names)})")
 
                             # Acumular registros para subida remota a Supabase al finalizar todo el scraping
-                            dev_key = dev_serial or table_name
+                            dev_key = table_name
                             pending_supabase_plants.append({
                                 "provider": "growatt",
                                 "plant_id": str(idx + 1),
@@ -690,10 +690,10 @@ def main() -> None:
                 if pending_supabase_telemetry or pending_supabase_plants:
                     try:
                         log.step("Iniciando sincronización masiva con Supabase...")
-                        for p_item in pending_supabase_plants:
-                            save_plant(**p_item)
-                        for d_item in pending_supabase_devices:
-                            save_device(**d_item)
+                        if pending_supabase_plants:
+                            save_plants_batch(pending_supabase_plants)
+                        if pending_supabase_devices:
+                            save_devices_batch(pending_supabase_devices)
                         if pending_supabase_telemetry:
                             inserted = save_telemetry_readings_batch(pending_supabase_telemetry)
                             log.ok(f"Sincronización Supabase completada ({inserted} lecturas)")

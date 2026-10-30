@@ -269,6 +269,68 @@ class SupabaseManager:
             log_supabase_activity("upsert_device", "error", f"Dispositivo {device_key}: {exc}", provider)
             return False
 
+    def save_plants_batch(self, plants: list[dict[str, Any]]) -> int:
+        if not self.is_enabled() or not plants:
+            return 0
+        hostname = _get_hostname()
+        now_iso = datetime.now().isoformat()
+        by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        for p in plants:
+            prov = str(p.get("provider") or "unknown")
+            pid = str(p.get("plant_id") or "").strip()
+            if not pid:
+                continue
+            meta = dict(p.get("metadata") or {})
+            meta.setdefault("hostname", hostname)
+            by_key[(prov, pid)] = {
+                "provider": prov,
+                "plant_id": pid,
+                "name": str(p.get("name") or pid),
+                "metadata": meta,
+                "updated_at": now_iso,
+            }
+        payload_list = list(by_key.values())
+        if not payload_list:
+            return 0
+        try:
+            self.client.table("monitors_plants").upsert(payload_list, on_conflict="provider,plant_id").execute()
+            log_supabase_activity("upsert_plants_batch", "success", f"Lote de {len(payload_list)} plantas guardado", payload_list[0]["provider"])
+            return len(payload_list)
+        except Exception as exc:
+            logger.error(f"[Supabase] Error guardando lote de plantas: {exc}")
+            return 0
+
+    def save_devices_batch(self, devices: list[dict[str, Any]]) -> int:
+        if not self.is_enabled() or not devices:
+            return 0
+        hostname = _get_hostname()
+        by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        for d in devices:
+            prov = str(d.get("provider") or "unknown")
+            dk = str(d.get("device_key") or "").strip()
+            if not dk:
+                continue
+            meta = dict(d.get("metadata") or {})
+            meta.setdefault("hostname", hostname)
+            by_key[(prov, dk)] = {
+                "provider": prov,
+                "plant_id": str(d.get("plant_id") or ""),
+                "device_key": dk,
+                "device_name": str(d.get("device_name") or dk),
+                "device_type": str(d.get("device_type") or "Inverter"),
+                "metadata": meta,
+            }
+        payload_list = list(by_key.values())
+        if not payload_list:
+            return 0
+        try:
+            self.client.table("devices").upsert(payload_list, on_conflict="provider,device_key").execute()
+            log_supabase_activity("upsert_devices_batch", "success", f"Lote de {len(payload_list)} dispositivos guardado", payload_list[0]["provider"])
+            return len(payload_list)
+        except Exception as exc:
+            logger.error(f"[Supabase] Error guardando lote de dispositivos: {exc}")
+            return 0
+
     def save_telemetry_reading(
         self,
         provider: str = "unknown",
@@ -588,3 +650,11 @@ def save_telemetry_readings_batch(*args, **kwargs) -> int:
 
 def save_plant_event(*args, **kwargs) -> bool:
     return SupabaseManager.get_instance().save_plant_event(*args, **kwargs)
+
+
+def save_plants_batch(plants: list[dict[str, Any]]) -> int:
+    return SupabaseManager.get_instance().save_plants_batch(plants)
+
+
+def save_devices_batch(devices: list[dict[str, Any]]) -> int:
+    return SupabaseManager.get_instance().save_devices_batch(devices)

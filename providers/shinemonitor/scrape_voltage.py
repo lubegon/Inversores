@@ -50,9 +50,20 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _db_path(base_dir: Path) -> Path:
-    storage_dir = base_dir / "storage"
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    return storage_dir / "shinemonitor.sqlite"
+    primary = base_dir / "Voltage  Shinemonitor.sqlite"
+    if not primary.exists() or primary.stat().st_size == 0:
+        for fallback in (
+            base_dir / "Captura_Inversores_Deploy" / "Voltage  Shinemonitor.sqlite",
+            base_dir / "storage" / "shinemonitor.sqlite",
+        ):
+            if fallback.exists() and fallback.stat().st_size > 0:
+                try:
+                    import shutil as _sh
+                    _sh.copy2(fallback, primary)
+                    break
+                except Exception:
+                    pass
+    return primary
 
 
 def _sanitize_name(name: str) -> str:
@@ -1416,38 +1427,27 @@ def _process_sync_queue() -> None:
         except Exception:
             pass
 
+    plant_items: list[dict[str, Any]] = []
+    device_items: list[dict[str, Any]] = []
     telemetry_items: list[dict[str, Any]] = []
 
-    for i, item in enumerate(_SYNC_QUEUE):
-        try:
-            t = item["type"]
-            if t == "plant":
-                save_plant(
-                    provider=item["provider"],
-                    plant_id=item["plant_id"],
-                    name=item["name"],
-                    metadata=item["metadata"],
-                )
-            elif t == "device":
-                save_device(
-                    provider=item["provider"],
-                    plant_id=item["plant_id"],
-                    device_key=item["device_key"],
-                    device_name=item["device_name"],
-                    metadata=item["metadata"],
-                )
-            elif t == "event":
-                save_plant_event(
-                    provider=item["provider"],
-                    plant_id=item["plant_id"],
-                    event_type=item["event_type"],
-                    message=item["message"],
-                    inserted_at=item["inserted_at"],
-                )
-            elif t == "telemetry":
-                telemetry_items.append(item)
-        except Exception as e:
-            print(f"Error procesando metadata en Supabase: {e}", flush=True)
+    for item in _SYNC_QUEUE:
+        t = item.get("type")
+        if t == "plant":
+            plant_items.append(item)
+        elif t == "device":
+            device_items.append(item)
+        elif t == "telemetry":
+            telemetry_items.append(item)
+
+    try:
+        from providers.supabase_client import save_plants_batch, save_devices_batch
+        if plant_items:
+            save_plants_batch(plant_items)
+        if device_items:
+            save_devices_batch(device_items)
+    except Exception as e:
+        print(f"Error procesando metadata en lote en Supabase: {e}", flush=True)
 
     if telemetry_items:
         try:

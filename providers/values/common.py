@@ -246,9 +246,10 @@ def db_path(base_dir: Path) -> Path:
 
 
 def connect_db(base_dir: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path(base_dir)))
+    conn = sqlite3.connect(str(db_path(base_dir)), timeout=30.0, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 

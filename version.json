@@ -1,5 +1,5 @@
 {
-    "version": "2.19.5",
+    "version": "2.19.6",
     "release_date": "2026-10-30",
-    "notes": "Hotfix credenciales operativas por defecto en .env.example y login.py, deteccion robusta de Python en iniciar_servidor.bat (ignorando stub WindowsApps), y cache en memoria + bloqueo de subida en corridas fallidas en webui_server.py."
+    "notes": "Auditoria forense integral: unificacion de BD Voltage Shinemonitor.sqlite, prevencion de colision de seriales repetidos entre plantas Growatt, conversion horaria UTC a Venezuela (UTC-4), lotes batch en Supabase y auto-reparacion de .env en actualizador."
 }

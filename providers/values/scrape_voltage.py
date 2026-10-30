@@ -627,14 +627,7 @@ def _upsert_meta_monitor(
         """,
         (monitor_key, monitor_name, table_name, seen_at),
     )
-    try:
-        from providers.supabase_client import get_supabase
-        sb = get_supabase()
-        if sb.is_enabled():
-            sb.save_plant("values", monitor_key, monitor_name)
-            sb.save_device("values", monitor_key, monitor_key, monitor_name, metadata={"table_name": table_name})
-    except Exception:
-        pass
+
 
 
 def _upsert_meta_columns(
@@ -1172,18 +1165,7 @@ def main() -> None:
             browser.close()
             conn.close()
 
-    # Diagrama de flujo: Finalizado todo el scraping y guardado local
-    # -> Bifurcación: 1) Reporte Excel Local  2) Envío a Supabase (Batch rápido)
-    try:
-        from webui_server import _generate_or_update_report, _current_slot
-        curr_slot = _current_slot()
-        if curr_slot:
-            _generate_or_update_report(slot=curr_slot)
-            print(f"[OK] Reporte Excel actualizado automáticamente para el turno: {curr_slot}", flush=True)
-    except Exception as ex:
-        print(f"[INFO] Aviso actualizando reporte Excel local: {ex}", flush=True)
-
-    # Envío de copia a Supabase en bloque de alta velocidad
+    # 1) Envío de copia a Supabase en bloque de alta velocidad
     if _PENDING_VALUES_TELEMETRY:
         try:
             from providers.supabase_client import save_telemetry_readings_batch
@@ -1192,6 +1174,17 @@ def main() -> None:
         except Exception as ex:
             print(f"[WARN] Error en sincronización masiva Supabase: {ex}", flush=True)
         _PENDING_VALUES_TELEMETRY.clear()
+
+    # 2) Reporte Excel Local solo si no es gestionado por _waiter de WebUI
+    if not os.getenv("WEBUI_MANAGED_JOB"):
+        try:
+            from webui_server import _generate_or_update_report, _current_slot
+            curr_slot = _current_slot()
+            if curr_slot:
+                _generate_or_update_report(slot=curr_slot)
+                print(f"[OK] Reporte Excel actualizado automáticamente para el turno: {curr_slot}", flush=True)
+        except Exception as ex:
+            print(f"[INFO] Aviso actualizando reporte Excel local: {ex}", flush=True)
 
     print("OK")
 

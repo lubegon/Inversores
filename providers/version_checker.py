@@ -160,6 +160,21 @@ def perform_auto_update(remote_ver: str, quiet: bool = False) -> bool:
                 except Exception as copy_err:
                     logger.warning(f"[AutoUpdate] No se pudo copiar {file}: {copy_err}")
 
+        # Si .env no existe o contiene placeholders de plantilla, repararlo desde .env.example actualizado
+        try:
+            env_file = BASE_DIR / ".env"
+            env_ex = BASE_DIR / ".env.example"
+            if env_ex.exists():
+                need_repair = not env_file.exists()
+                if not need_repair:
+                    env_content = env_file.read_text(encoding="utf-8", errors="ignore")
+                    if "pon_tu_usuario_growatt" in env_content or "pon_tu_clave_aqui" in env_content:
+                        need_repair = True
+                if need_repair:
+                    shutil.copy2(env_ex, env_file)
+        except Exception:
+            pass
+
         # Limpiar directorio temporal
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)

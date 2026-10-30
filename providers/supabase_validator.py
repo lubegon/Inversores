@@ -15,7 +15,7 @@ def validate_and_correct_supabase():
         print("Supabase no está configurado o habilitado.")
         return {"ok": False, "error": "Supabase desactivado"}
 
-    client = sb._client
+    client = sb.client
     if not client:
         return {"ok": False, "error": "No hay cliente de Supabase"}
 
