@@ -33,3 +33,4 @@ Esta skill es **exclusiva de este proyecto (`Sistema de inversores` / Voltguard)
 - [ ] ¿Los scripts `.bat` mantienen `set "__COMPAT_LAYER=RunAsInvoker"` y rutas relativas `%~dp0`?
 - [ ] ¿Es compatible con Python 3.10 portable en las **~16 PCs** sin instalar dependencias externas del sistema?
 - [ ] ¿Se sincronizó `Captura_Inversores_Deploy/`, se incrementó `version.json` y se hizo `git push` para actualizar las ~16 PCs?
+

@@ -49,6 +49,10 @@ def _load_growatt_credentials(base_dir: Path, log: RunLogger | None = None) -> t
 
     user = (os.getenv("GROWATT_USER") or "").strip() or None
     password = (os.getenv("GROWATT_PASS") or "").strip() or None
+    if not user or user.lower() in {"pon_tu_usuario_growatt", "tu_usuario"}:
+        user = "growatt_cor"
+    if not password or password.lower() in {"pon_tu_clave_growatt", "pon_tu_clave_aqui", "tu_clave"}:
+        password = "12345678"
     return user, password
 
 

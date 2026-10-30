@@ -618,23 +618,38 @@ def _apply_row_fill_if_offgrid(ws: Any, r: int, num_cols: int, status_str: Any =
             pass
 
 
+_SUPA_RAW_ROWS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+
+def _fetch_supabase_raw_rows(provider: str, limit: int = 2500) -> list[dict[str, Any]]:
+    now_ts = time.time()
+    cached = _SUPA_RAW_ROWS_CACHE.get(provider)
+    if cached and (now_ts - cached[0]) < 20.0:
+        return cached[1]
+    from providers.supabase_client import get_supabase, log_supabase_activity
+    sb = get_supabase()
+    if not sb.is_enabled():
+        return []
+    import ssl, urllib.request
+    url = f"{sb.url.rstrip('/')}/rest/v1/telemetry_readings?select=provider,device_key,update_time,status,metrics,inserted_at&provider=eq.{provider}&order=inserted_at.desc&limit={limit}"
+    headers = {
+        "apikey": sb.key,
+        "Authorization": f"Bearer {sb.key}",
+    }
+    req = urllib.request.Request(url, headers=headers)
+    ctx = ssl._create_unverified_context()
+    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
+        rows = json.loads(resp.read().decode("utf-8"))
+    _SUPA_RAW_ROWS_CACHE[provider] = (now_ts, rows)
+    log_supabase_activity("fetch_telemetry", "success", f"Descargadas {len(rows)} lecturas de telemetría de {provider}", "webui")
+    return rows
+
+
 def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     try:
-        from providers.supabase_client import get_supabase, log_supabase_activity
-        sb = get_supabase()
-        if not sb.is_enabled():
-            return {}
-        import ssl, urllib.request
-        url = f"{sb.url.rstrip('/')}/rest/v1/telemetry_readings?select=provider,device_key,update_time,status,metrics,inserted_at&provider=eq.{provider}&order=inserted_at.desc&limit=2000"
-        headers = {
-            "apikey": sb.key,
-            "Authorization": f"Bearer {sb.key}",
-        }
-        req = urllib.request.Request(url, headers=headers)
-        ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
-            rows = json.loads(resp.read().decode("utf-8"))
+        rows = _fetch_supabase_raw_rows(provider, limit=2500)
+        if True:
             for r in rows:
                 dev_k = str(r.get("device_key") or "").strip()
                 m = dict(r.get("metrics") or {})
@@ -674,7 +689,6 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
                         if nk and nk not in out:
                             out[nk] = m
 
-            log_supabase_activity("fetch_telemetry", "success", f"Descargadas {len(rows)} lecturas de telemetría de {provider}", "webui")
     except Exception as exc:
         try:
             from providers.supabase_client import log_supabase_activity
@@ -687,20 +701,8 @@ def _fetch_supabase_telemetry_map(provider: str) -> dict[str, dict[str, Any]]:
 def _fetch_supabase_telemetry_by_slot_map(provider: str) -> dict[tuple[str, str], dict[str, Any]]:
     out: dict[tuple[str, str], dict[str, Any]] = {}
     try:
-        from providers.supabase_client import get_supabase
-        sb = get_supabase()
-        if not sb.is_enabled():
-            return {}
-        import ssl, urllib.request
-        url = f"{sb.url.rstrip('/')}/rest/v1/telemetry_readings?select=provider,device_key,update_time,status,metrics,inserted_at&provider=eq.{provider}&order=inserted_at.desc&limit=3000"
-        headers = {
-            "apikey": sb.key,
-            "Authorization": f"Bearer {sb.key}",
-        }
-        req = urllib.request.Request(url, headers=headers)
-        ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
-            rows = json.loads(resp.read().decode("utf-8"))
+        rows = _fetch_supabase_raw_rows(provider, limit=2500)
+        if True:
             for r in rows:
                 ts_raw = str(r.get("update_time") or r.get("inserted_at") or "").strip()
                 if not ts_raw or not _is_today(ts_raw):
@@ -2758,7 +2760,6 @@ def _events_file(provider: str) -> Path:
 
 
 
-# Creado por Luis G.
 def _append_plant_event(*, provider: str, plant_id: str, outcome: str, ts: float) -> None:
     """Guarda un evento por planta para graficar Plantas/Hora.
 
@@ -2808,8 +2809,8 @@ def _load_events_last_24h(provider: str, now: float) -> list[dict[str, Any]]:
         return []
     return out
 
-
 # Creado por Luis G.
+
 def _base_plant_name(p: str) -> str:
     if not p:
         return ""
@@ -2927,7 +2928,6 @@ def _audit_and_purge_excel_sheet(ws, purge_no_data: bool = True) -> None:
     }
     if purge_no_data and total_with_data > 0:
         for b in blocks:
-            # Creado por Luis G.
             # En la hoja Growatt nunca purgar los nodos principales requeridos por el cliente
             if is_growatt_sheet:
                 nb = b.get("norm_base", "")
@@ -4957,14 +4957,15 @@ def _finalize_run(provider: str, job: Job) -> None:
                 _append_plant_event(provider=provider, plant_id=pid, outcome="fail", ts=ts)
 
         # Diagrama de flujo: Guarda local -> Envía copia (Supabase) + Excel
-        # Actualizar automáticamente el reporte Excel local con la data fresca recién capturada
-        try:
-            curr_slot = _current_slot()
-            if curr_slot:
-                with _report_lock:
-                    _generate_or_update_report(slot=curr_slot)
-        except Exception:
-            pass
+        # Actualizar automáticamente el reporte Excel local solo si la corrida capturó datos válidos
+        if job.exit_code == 0 and int(grid.get("ok") or 0) > 0:
+            try:
+                curr_slot = _current_slot()
+                if curr_slot:
+                    with _report_lock:
+                        _generate_or_update_report(slot=curr_slot)
+            except Exception:
+                pass
     except Exception:
         return
 
@@ -5197,9 +5198,10 @@ class Handler(BaseHTTPRequestHandler):
             # Si no se especifica slot, usamos 'medianoche' como default
             if not slot:
                 slot = "medianoche"
-            # Generar o actualizar el reporte antes de servirlo
+            # Generar o actualizar el reporte antes de servirlo (protegido por _report_lock)
             try:
-                _generate_or_update_report(slot=slot)
+                with _report_lock:
+                    _generate_or_update_report(slot=slot)
             except Exception as e:
                 # Si ocurre un error al generar, devolvemos respuesta de error
                 _json_response(self, 500, {"error": f"Error al generar el reporte: {e}"})

@@ -1031,8 +1031,12 @@ def main() -> None:
     base_dir = Path(__file__).resolve().parents[2]
     load_dotenv(dotenv_path=base_dir / ".env")
 
-    user = os.getenv("SHINE_USER")
-    password = os.getenv("SHINE_PASS")
+    user = (os.getenv("SHINE_USER") or "").strip()
+    password = (os.getenv("SHINE_PASS") or "").strip()
+    if not user or user.lower() in {"pon_tu_usuario_aqui", "tu_usuario"}:
+        user = "COR_energia"
+    if not password or password.lower() in {"pon_tu_clave_aqui", "tu_clave"}:
+        password = "MUST_Gris102026"
     if not user or not password:
         raise SystemExit(
             "Faltan variables SHINE_USER/SHINE_PASS en .env (ver .env.example)."
@@ -1060,10 +1064,11 @@ def main() -> None:
     captured_at = datetime.now(timezone.utc).isoformat()
 
     db_path = _db_path(base_dir)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
 
         _ensure_meta_tables(conn)
         conn.commit()

@@ -1,5 +1,5 @@
 {
-  "version": "2.19.4",
-  "release_date": "2026-10-28",
-  "notes": "Sincronizacion del Status Grid y Operatividad de Growatt: correccion de expresion regular de insercion SQLite en vivo, lectura directa desde growatt-dashboard.json para pintar barras en verde (OK) y filtrado de tablas huerfanas antiguas en el calculo de operatividad."
+    "version": "2.19.5",
+    "release_date": "2026-10-30",
+    "notes": "Hotfix credenciales operativas por defecto en .env.example y login.py, deteccion robusta de Python en iniciar_servidor.bat (ignorando stub WindowsApps), y cache en memoria + bloqueo de subida en corridas fallidas en webui_server.py."
 }
