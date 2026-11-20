@@ -145,12 +145,12 @@ El sistema opera bajo una **Arquitectura Híbrida Local-First** para las ~16 PCs
    - **Empate Dual de Turno (`update_time` + `inserted_at`) y Backfill Histórico del Día**: En `_update_report_growatt_sheet()` y `_fetch_supabase_telemetry_by_slot_map()`, indexar las lecturas de hoy tanto por el turno de `update_time` (reloj del datalogger) como por el turno de `inserted_at` (hora real de captura), y reconstruir turnos previos del día consultando las últimas 12 filas de SQLite (`sqlite_by_slot`) y Supabase.
    - **Auditoría de Duplicados Segura**: En `_audit_and_purge_excel_sheet()`, no agrupar ni purgar bloques que compartan nombre base si poseen números de serie distintos.
 2. **Conversión Horaria `UTC-4` (Venezuela) y Franjas Horarias Estrictas:**
-   - `_format_short_timestamp()` debe convertir cualquier timestamp ISO con zona horaria (`Z` o `+00:00`) a hora local de Venezuela (`UTC-4`, `timezone(timedelta(hours=-4))`) antes de formatearlo como `DD-MM-YYYY HH:MM:SS`, evitando que lecturas de la mañana (`11:30 AM` = `15:30 UTC`) se clasifiquen por error en el turno de mediodía.
-   - `_current_slot()` y `_slot_for_timestamp()` deben cubrir sin excepción:
-     - `05:00 - 10:00` -> Mañana
-     - `11:30 - 16:00` (4:00 PM) -> Mediodía
-     - `17:00 - 22:59` -> Tarde (OBLIGATORIO en `_current_slot`, nunca desviar a medianoche)
-     - `23:00 - 04:59` -> Medianoche
+   - `_format_short_timestamp()` debe convertir cualquier timestamp ISO con zona horaria (`Z` o `+00:00`) a hora local de Venezuela (`UTC-4`, `timezone(timedelta(hours=-4))`) antes de formatearlo como `DD-MM-YYYY HH:MM:SS`, evitando que lecturas de la mañana (ej. `09:30 AM` = `13:30 UTC`) se clasifiquen por error en el turno de mediodía.
+   - `_current_slot()` y `_slot_for_timestamp()` deben evaluar siempre horas y minutos (`total_mins = h * 60 + minute`) para cubrir sin excepción:
+     - `05:00 - 10:00` (5:00 AM – 10:00 AM) -> **Mañana** (`manana`)
+     - `11:30 - 16:00` (11:30 AM – 4:00 PM) -> **Mediodía** (`mediodia`)
+     - `17:00 - 22:59` (5:00 PM – 10:59 PM) -> **Tarde** (`tarde`, OBLIGATORIO en `_current_slot`, nunca desviar a medianoche)
+     - `23:00 - 04:59` (11:00 PM – 4:59 AM) -> **Medianoche** (`medianoche`)
 3. **Compatibilidad con Python 3.10:**
    - El sistema portable está estandarizado para Python 3.10. No utilizar funciones, sintaxis o tipados exclusivos de Python 3.12+.
 
