@@ -190,12 +190,14 @@ def _current_slot() -> str:
         now_local = datetime.now(ZoneInfo("America/Caracas"))
     except Exception:
         pass
-    h = now_local.hour
-    if 5 <= h < 12:
+    total_mins = now_local.hour * 60 + now_local.minute
+    # Mañana: 05:00 - 10:00 (300 - 600 min; margen hasta 11:29 antes de Mediodía)
+    if 300 <= total_mins < 690:
         return "manana"
-    elif 12 <= h < 17:
+    # Mediodía: 11:30 - 16:00 (690 - 960 min; margen hasta 16:59 antes de Tarde)
+    elif 690 <= total_mins < 1020:
         return "mediodia"
-    elif 17 <= h < 23:
+    elif 1020 <= total_mins < 1380:
         return "tarde"
     return "medianoche"
 
@@ -210,14 +212,15 @@ def _slot_for_timestamp(ts: Any) -> str | None:
     if not m:
         return None
     try:
-        h = int(m.group(1))
+        h, minute = int(m.group(1)), int(m.group(2))
         if "Z" in s or "+00" in s:
             h = (h - 4) % 24
-        if 5 <= h < 12:
-            return "manana"
-        elif 12 <= h < 17:
-            return "mediodia"
-        elif 17 <= h < 23:
+        total_mins = h * 60 + minute
+        if 300 <= total_mins < 690:
+            return "manana" if total_mins < 660 else "mediodia"
+        elif 690 <= total_mins < 1020:
+            return "mediodia" if total_mins <= 990 else "tarde"
+        elif 1020 <= total_mins < 1380:
             return "tarde"
         return "medianoche"
     except Exception:
@@ -2806,10 +2809,10 @@ def _append_plant_event(*, provider: str, plant_id: str, outcome: str, ts: float
         return
     if outcome not in ("ok", "fail"):
         return
+# Creado por Luis G.
     try:
         _ensure_storage()
         path = _events_file(provider)
-# Creado por Luis G.
         rec = {"ts": float(ts), "provider": provider, "plant_id": str(plant_id), "outcome": outcome}
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")

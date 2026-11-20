@@ -147,8 +147,8 @@ El sistema opera bajo una **Arquitectura Híbrida Local-First** para las ~16 PCs
 2. **Conversión Horaria `UTC-4` (Venezuela) y Franjas Horarias Estrictas:**
    - `_format_short_timestamp()` debe convertir cualquier timestamp ISO con zona horaria (`Z` o `+00:00`) a hora local de Venezuela (`UTC-4`, `timezone(timedelta(hours=-4))`) antes de formatearlo como `DD-MM-YYYY HH:MM:SS`, evitando que lecturas de la mañana (`11:30 AM` = `15:30 UTC`) se clasifiquen por error en el turno de mediodía.
    - `_current_slot()` y `_slot_for_timestamp()` deben cubrir sin excepción:
-     - `05:00 - 11:59` -> Mañana
-     - `12:00 - 16:59` -> Mediodía
+     - `05:00 - 10:00` -> Mañana
+     - `11:30 - 16:00` (4:00 PM) -> Mediodía
      - `17:00 - 22:59` -> Tarde (OBLIGATORIO en `_current_slot`, nunca desviar a medianoche)
      - `23:00 - 04:59` -> Medianoche
 3. **Compatibilidad con Python 3.10:**
